@@ -13,7 +13,7 @@ print("Mesh has", np.asarray(mesh.vertices).shape[0], "vertices")
 # -----------------------------
 # 2. Sample a point cloud from the mesh surface
 # -----------------------------
-pcd = mesh.sample_points_uniformly(number_of_points=1000)
+pcd = mesh.sample_points_uniformly(number_of_points=50000)
 points = np.asarray(pcd.points)
 normals = np.asarray(pcd.normals)
 num_points = len(points)
