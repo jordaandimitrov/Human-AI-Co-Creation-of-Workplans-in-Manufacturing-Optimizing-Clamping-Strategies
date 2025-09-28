@@ -1,3 +1,4 @@
+#dont really use this file anymore but i keep it in here because it has the code for automatically picking points based on normals and centre of plane
 import torch
 import open3d as o3d
 import numpy as np
