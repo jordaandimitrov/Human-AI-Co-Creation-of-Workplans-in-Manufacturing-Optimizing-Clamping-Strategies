@@ -225,8 +225,9 @@ def visualize_clamp_faces(shape, predicted_faces):
 
 
 
+
 # ============================================================
-# STEP 7: Example usage
+# STEP 7: Example usage d
 # ============================================================
 
 if __name__ == "__main__":
