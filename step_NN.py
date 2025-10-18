@@ -316,15 +316,25 @@ def predict_best_faces(model, features, top_k=2):
 # ============================================================
 
 from vedo import Mesh, show, Text3D
+import numpy as np
+
+
+
+from vedo import Mesh, show, Plotter, color_map
+
+from vedo import Mesh, Plotter, color_map
+
+from vedo import Mesh, Plotter, color_map, Text2D
+
+from vedo import Mesh, Plotter, color_map, Text2D
 
 def visualize_clamp_faces(shape, predicted_faces, probs=None):
-    """Show colored faces — red = high prob, blue = low prob, with face numbers"""
+    """Show colored faces with picking enabled and display selected face number + probability."""
     BRepMesh_IncrementalMesh(shape, 0.05, True, True)
     exp = TopExp_Explorer(shape, TopAbs_FACE)
 
     meshes = []
-    face_idx = 0
-    face_centers = []
+    face_idx = 0  # index for faces
 
     while exp.More():
         face = topods.Face(exp.Current())
@@ -341,27 +351,49 @@ def visualize_clamp_faces(shape, predicted_faces, probs=None):
                               triang.Triangle(i).Get()[2] - 1]
                              for i in range(1, triang.NbTriangles() + 1)])
 
-            # Determine face color
-            if probs is not None:
+            # Color mapping
+            if probs is not None and face_idx < len(probs):
                 color = color_map(probs[face_idx], name="jet", vmin=0, vmax=1)
             else:
                 color = "red" if face_idx in predicted_faces else "lightgray"
 
-            meshes.append(Mesh([nodes, tris], c=color, alpha=1.0))
-
-            # Compute center of this face
-            center = nodes.mean(axis=0)
-            face_centers.append(center)
+            mesh = Mesh([nodes, tris], c=color, alpha=1.0)
+            mesh.face_idx = face_idx  # store the face index for picking
+            meshes.append(mesh)
+            face_idx += 1
 
         exp.Next()
-        face_idx += 1
 
-    # Add Text3D for face numbers
-    for i, c in enumerate(face_centers):
-        meshes.append(Text3D(str(i), pos=c, s=7, c="white"))
+    # Create plotter
+    plt = Plotter(title="Predicted Clamping Faces", bg="gray", axes=1)
 
-    print("🟦 Blue = low confidence | 🟥 Red = high confidence")
-    show(*meshes, "Predicted Clamping Faces", axes=1, viewup="z", resetcam=True, bg="gray")
+    # Add meshes
+    for m in meshes:
+        plt.add(m)
+
+    # Add overlay Text2D in top-right
+    overlay_text = Text2D("", pos="top-right", c="white", s=1.5)
+    plt.add(overlay_text)
+
+    # Picking callback
+    def on_pick(evt):
+        if evt.actor and hasattr(evt.actor, "face_idx"):
+            idx = evt.actor.face_idx
+            prob = probs[idx] if probs is not None and idx < len(probs) else None
+            text_str = f"Selected Face: {idx}"
+            if prob is not None:
+                text_str += f"\nProbability: {prob:.3f}"
+            overlay_text.text(text_str)
+            print(f"Face clicked: {idx}, Probability: {prob}")
+            plt.render()  # update screen
+
+    plt.add_callback("mouse click", on_pick)
+    plt.show(interactive=True)
+
+
+
+
+
 
 
 # ============================================================
