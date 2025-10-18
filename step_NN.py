@@ -85,8 +85,12 @@ def edge_length(edge):
     curve_adapt = BRepAdaptor_Curve(edge)
     return curve_adapt.LastParameter() - curve_adapt.FirstParameter()
 
-def extract_face_features(shape):
-    """Extended geometric features for each face."""
+from sklearn.decomposition import PCA
+
+def extract_face_features(shape, apply_local_frame=True):
+    """Extended geometric features for each face, optionally in local part frame."""
+    BRepMesh_IncrementalMesh(shape, 0.05, True, True)
+
     features = []
     centers = []
 
@@ -95,6 +99,31 @@ def extract_face_features(shape):
     while exp.More():
         all_faces.append(topods.Face(exp.Current()))
         exp.Next()
+
+    # Compute all vertices for PCA
+    all_vertices = []
+    for face in all_faces:
+        loc = face.Location()
+        triang = BRep_Tool.Triangulation(face, loc)
+        if triang:
+            pts = np.array([[triang.Node(i).X(),
+                             triang.Node(i).Y(),
+                             triang.Node(i).Z()]
+                            for i in range(1, triang.NbNodes() + 1)])
+            all_vertices.append(pts)
+    if not all_vertices:
+        raise ValueError("No vertices found in shape for PCA normalization.")
+    all_vertices = np.vstack(all_vertices)
+
+    # PCA for local coordinate frame
+    if apply_local_frame:
+        pca = PCA(n_components=3)
+        pca.fit(all_vertices)
+        center_pca = pca.mean_
+        rot_matrix = pca.components_.T  # 3x3 rotation matrix
+    else:
+        center_pca = np.zeros(3)
+        rot_matrix = np.eye(3)
 
     # Precompute part center
     props = GProp_GProps()
@@ -116,14 +145,14 @@ def extract_face_features(shape):
 
         # --- Surface type ---
         surf = BRepAdaptor_Surface(face, True)
-        surf_type_id = surf.GetType()  # 0=plane, 1=cylinder, etc.
+        surf_type_id = surf.GetType()
 
         # --- Normal ---
         nx, ny, nz = safe_face_normal(face)
-
-        # --- Orientation angles ---
         normal = np.array([nx, ny, nz])
         normal /= np.linalg.norm(normal) + 1e-8
+
+        # --- Orientation angles ---
         z_angle = math.degrees(math.acos(abs(normal[2])))  # angle to Z
         x_angle = math.degrees(math.acos(abs(normal[0])))  # angle to X
 
@@ -136,14 +165,22 @@ def extract_face_features(shape):
         # --- Distance from part center ---
         dist_center = np.linalg.norm(c - part_center)
 
-        # --- Flatness (planar = 1) ---
+        # --- Flatness ---
         flatness = 1 if surf_type_id == 0 else 0
+
+        # --- Transform to part local frame ---
+        if apply_local_frame:
+            c_local = (c - center_pca) @ rot_matrix
+            normal_local = normal @ rot_matrix
+        else:
+            c_local = c
+            normal_local = normal
 
         features.append([
             area, perimeter, aspect_ratio,
-            nx, ny, nz,
+            *normal_local,
             z_angle, x_angle,
-            c[0], c[1], c[2],
+            *c_local,
             dist_center, flatness
         ])
         centers.append(c)
@@ -166,18 +203,31 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 class ClampDataset(Dataset):
-    def __init__(self, parts):
+    """Clamp dataset with on-the-fly random rotation augmentation for robustness."""
+    def __init__(self, parts, augment_rot=True):
         self.parts = parts
+        self.augment_rot = augment_rot
 
     def __len__(self):
         return len(self.parts)
 
     def __getitem__(self, idx):
         part = self.parts[idx]
-        X = torch.tensor(part["features"], dtype=torch.float32)
+        X = part["features"].copy()
         y = torch.tensor(part["labels"], dtype=torch.float32)
-        return X, y
 
+        # --- Random rotation augmentation ---
+        if self.augment_rot:
+            angle = np.random.uniform(0, 2*np.pi)
+            rot_matrix = np.array([[np.cos(angle), -np.sin(angle), 0],
+                                   [np.sin(angle),  np.cos(angle), 0],
+                                   [0, 0, 1]])
+            # Apply rotation to normals (cols 3-5) and face centers (cols 8-10)
+            X[:, 3:6] = X[:, 3:6] @ rot_matrix.T
+            X[:, 8:11] = X[:, 8:11] @ rot_matrix.T
+
+        X = torch.tensor(X, dtype=torch.float32)
+        return X, y
 
 def load_labeled_dataset(labels_file):
     """Load labeled parts (features + face labels) from JSON"""
@@ -265,13 +315,17 @@ def predict_best_faces(model, features, top_k=2):
 # STEP 6: Visualization
 # ============================================================
 
+from vedo import Mesh, show, Text3D
+
 def visualize_clamp_faces(shape, predicted_faces, probs=None):
-    """Show colored faces — red = high prob, blue = low prob"""
+    """Show colored faces — red = high prob, blue = low prob, with face numbers"""
     BRepMesh_IncrementalMesh(shape, 0.05, True, True)
     exp = TopExp_Explorer(shape, TopAbs_FACE)
 
     meshes = []
-    idx = 0
+    face_idx = 0
+    face_centers = []
+
     while exp.More():
         face = topods.Face(exp.Current())
         loc = face.Location()
@@ -287,17 +341,27 @@ def visualize_clamp_faces(shape, predicted_faces, probs=None):
                               triang.Triangle(i).Get()[2] - 1]
                              for i in range(1, triang.NbTriangles() + 1)])
 
+            # Determine face color
             if probs is not None:
-                color = color_map(probs[idx], name="jet", vmin=0, vmax=1)
+                color = color_map(probs[face_idx], name="jet", vmin=0, vmax=1)
             else:
-                color = "red" if idx in predicted_faces else "lightgray"
+                color = "red" if face_idx in predicted_faces else "lightgray"
 
             meshes.append(Mesh([nodes, tris], c=color, alpha=1.0))
+
+            # Compute center of this face
+            center = nodes.mean(axis=0)
+            face_centers.append(center)
+
         exp.Next()
-        idx += 1
+        face_idx += 1
+
+    # Add Text3D for face numbers
+    for i, c in enumerate(face_centers):
+        meshes.append(Text3D(str(i), pos=c, s=7, c="white"))
 
     print("🟦 Blue = low confidence | 🟥 Red = high confidence")
-    show(*meshes, "Predicted Clamping Faces", axes=1, viewup="z", resetcam=True)
+    show(*meshes, "Predicted Clamping Faces", axes=1, viewup="z", resetcam=True, bg="gray")
 
 
 # ============================================================
