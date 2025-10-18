@@ -1,7 +1,8 @@
 # ============================================================
 # CLAMP FACE CLASSIFIER (with safe normals + vedo visualization)
 # ============================================================
-
+import json
+import os
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 import torch
@@ -97,13 +98,18 @@ def extract_face_features(shape):
     # Normalize normals
     norms = np.linalg.norm(features[:, 2:5], axis=1, keepdims=True) + 1e-8
     features[:, 2:5] /= norms
+    features[:, 0] /= np.max(features[:, 0]) + 1e-8  # normalize area
+
     return features
 
 
 # ============================================================
 # STEP 2: Dataset
 # ============================================================
-
+import torch, numpy as np, random
+torch.manual_seed(42)
+np.random.seed(42)
+random.seed(42)
 class ClampDataset(Dataset):
     def __init__(self, parts):
         self.parts = parts
@@ -137,6 +143,31 @@ class ClampNet(nn.Module):
         logits = self.net(X).squeeze(-1)
         return logits
 
+
+
+
+
+
+
+def load_labeled_dataset(labels_file=r"C:\Users\jorda\Desktop\Unif\MA3\Thesis\Git\labels.json"):
+    try:
+        with open(labels_file) as f:
+            all_labels = json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"{labels_file} not found. Please label some files first.")
+
+    all_parts = []
+    for stp_file, labels in all_labels.items():
+        if not os.path.exists(stp_file):
+            print(f"Warning: {stp_file} does not exist, skipping.")
+            continue
+        shape = read_step_file(stp_file)
+        features = extract_face_features(shape)
+        if len(features) != len(labels):
+            print(f"Warning: feature/label mismatch for {stp_file}")
+            continue
+        all_parts.append({"features": features, "labels": labels})
+    return all_parts
 
 # ============================================================
 # STEP 4: Training
@@ -192,8 +223,22 @@ from OCC.Core.TopoDS import topods
 from OCC.Core.BRep import BRep_Tool
 import numpy as np
 
-def visualize_clamp_faces(shape, predicted_faces):
-    # Force fine mesh
+from vedo import show, Mesh
+from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+from OCC.Core.TopExp import TopExp_Explorer
+from OCC.Core.TopAbs import TopAbs_FACE
+from OCC.Core.TopoDS import topods
+from OCC.Core.BRep import BRep_Tool
+import numpy as np
+
+def visualize_clamp_faces(shape, predicted_faces, probs=None):
+    """
+    Visualize faces with color-coded probabilities.
+    Red = high probability, blue = low probability.
+    """
+    from vedo import color_map
+
+    # Mesh the shape
     BRepMesh_IncrementalMesh(shape, 0.05, True, True)
 
     exp = TopExp_Explorer(shape, TopAbs_FACE)
@@ -204,24 +249,29 @@ def visualize_clamp_faces(shape, predicted_faces):
         loc = face.Location()
         triang = BRep_Tool.Triangulation(face, loc)
         if triang:
-            # Get nodes
             nodes = np.array([[triang.Node(i).X(),
                                triang.Node(i).Y(),
                                triang.Node(i).Z()]
                               for i in range(1, triang.NbNodes() + 1)])
-            # Get triangles (indices start at 1 in OCC)
             tris = np.array([[triang.Triangle(i).Get()[0]-1,
                               triang.Triangle(i).Get()[1]-1,
                               triang.Triangle(i).Get()[2]-1]
                              for i in range(1, triang.NbTriangles() + 1)])
-            # Color
-            color = "red" if idx in predicted_faces else "lightgray"
+
+            # --- Color based on probability ---
+            if probs is not None:
+                color = color_map(probs[idx], name="jet", vmin=0, vmax=1)
+            else:
+                color = "red" if idx in predicted_faces else "lightgray"
+
             mesh = Mesh([nodes, tris], c=color, alpha=1.0)
             meshes.append(mesh)
+
         exp.Next()
         idx += 1
 
-    show(*meshes, "Predicted Clamping Faces", axes=1, viewup="z", resetcam=True)
+    print("Color legend: Blue = low confidence, Red = high confidence")
+    show(*meshes, "Predicted Clamping Faces with Probabilities", axes=1, viewup="z", resetcam=True)
 
 
 
@@ -231,29 +281,50 @@ def visualize_clamp_faces(shape, predicted_faces):
 # ============================================================
 
 if __name__ == "__main__":
+    # ---------------------------------------------
+    # STEP 0: Pick STEP files (optional, for labeling)
+    # ---------------------------------------------
     Tk().withdraw()
-    file_path = askopenfilename(title="Select an STP file", filetypes=[("STP files", "*.stp")])
-    if not file_path:
-        raise ValueError("No STEP file selected!")
 
-    shape = read_step_file(file_path)
-    features = extract_face_features(shape)
+    # ---------------------------------------------
+    # STEP 1: Load all labeled STEP files
+    # ---------------------------------------------
+    all_parts = load_labeled_dataset(r"C:\Users\jorda\Desktop\Unif\MA3\Thesis\Git\labels.json")
+    if not all_parts:
+        raise ValueError("No labeled STEP files found in labels.json.")
 
-    # Simulate manual labels: 2 largest-area faces as clamping
-    areas = features[:, 0]
-    top2 = np.argsort(-areas)[:2]
-    labels = np.zeros(len(features), dtype=np.float32)
-    labels[top2] = 1.0
-
-    dataset = ClampDataset([{"features": features, "labels": labels}])
+    # ---------------------------------------------
+    # STEP 2: Create dataset and dataloader
+    # ---------------------------------------------
+    dataset = ClampDataset(all_parts)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
 
-    model = ClampNet(in_dim=features.shape[1])
-    trained_model = train_model(model, dataloader, epochs=30, lr=1e-3)
+    # ---------------------------------------------
+    # STEP 3: Initialize and train the model
+    # ---------------------------------------------
+    model = ClampNet(in_dim=5)
+    trained_model = train_model(model, dataloader, epochs=50, lr=1e-3)
+
+    # Optional: save model
+    torch.save(trained_model.state_dict(), "clamp_model.pth")
+
+    # ---------------------------------------------
+    # STEP 4: Testing / Inference on a new STEP file
+    # ---------------------------------------------
+    test_file = askopenfilename(title="Select a STEP file to test", filetypes=[("STP files", "*.stp")])
+    if not test_file:
+        raise ValueError("No STEP file selected!")
+
+    shape = read_step_file(test_file)
+    features = extract_face_features(shape)
 
     predicted_faces, probs = predict_best_faces(trained_model, features)
-    print("\nPredicted clamping faces:", predicted_faces)
-    print("Probabilities:", probs)
 
-    # Visualize predicted clamp faces
-    visualize_clamp_faces(shape, predicted_faces)
+    # Print probabilities for each face
+    print("\n=== Face Probabilities ===")
+    for i, p in enumerate(probs):
+        print(f"Face {i}: {p:.4f}")
+
+    # Visualize with probabilities
+    visualize_clamp_faces(shape, predicted_faces, probs)
+
