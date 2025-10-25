@@ -51,12 +51,13 @@ def mesh_faces(shape):
 
 from vedo import Plotter, Mesh, Text2D
 
+
 def interactive_labeling(save_json="labels.json"):
     # --- File picker ---
     Tk().withdraw()
     file_path = askopenfilename(
         title="Select an STP file",
-        filetypes=[("STEP files", "*.step"), ("STP files", "*.stp")]
+        filetypes=[("STP files", "*.stp"), ("STEP files", "*.step")]
     )
     if not file_path:
         print("No file selected. Exiting.")
