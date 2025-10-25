@@ -404,11 +404,11 @@ def visualize_faces(shape, clamp_probs, support_probs):
         plt.add(m)
 
     # --- Overlay text in top right ---
-    overlay = Text2D("Mode: Clamp", pos="top-right", c="white", s=1.5)
+    overlay = Text2D("", s=1.5)
     plt.add(overlay)
 
     # --- Clicked face info text ---
-    face_info = Text2D("", pos="bottom-right", c="white", s=1.2)
+    face_info = Text2D("", pos="top-right", c="white", s=1.2)
     plt.add(face_info)
 
     # --- Handle face clicks ---
@@ -460,12 +460,13 @@ def visualize_faces(shape, clamp_probs, support_probs):
         # Toggle mode
         view_mode["current"] = 1 - view_mode["current"]
         mode_text = "Clamp" if view_mode["current"] == 0 else "Support"
-
+        btncolor = "blue" if view_mode["current"] == 0 else "red"
         # Update overlay
-        overlay.text(f"Mode: {mode_text}")
+        overlay.text(f"")
 
         # Update button label
         btn.text(mode_text)
+        btn.c(btncolor)
 
         # Update face colors
         update_colors()
@@ -476,7 +477,7 @@ def visualize_faces(shape, clamp_probs, support_probs):
         toggle_mode,
         pos=(0.05, 0.95),
         states=["Clamp", "Support"],  # required but we override manually
-        c=["lightblue", "lightgreen"],
+        c=["blue", "red"],
         bc=["black", "black"],
         font="Courier",
         size=24,
