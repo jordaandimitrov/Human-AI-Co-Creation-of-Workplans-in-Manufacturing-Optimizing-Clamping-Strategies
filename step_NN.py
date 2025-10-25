@@ -440,6 +440,37 @@ def visualize_faces(shape, clamp_probs, support_probs):
         plt.render()
 
     plt.add_callback("key press", on_key)
+
+    from vedo import Button
+
+    # --- Toggle Button ---
+    # Add this flag outside the toggle_mode function
+    last_toggle_time = {"ts": 0}
+
+    def toggle_mode(widget, event):
+        import time
+        now = time.time()
+        if now - last_toggle_time["ts"] < 0.3:  # 300ms debounce
+            return
+        last_toggle_time["ts"] = now
+
+        view_mode["current"] = 1 - view_mode["current"]
+        mode_text = "Clamp" if view_mode["current"] == 0 else "Support"
+        overlay.text(f"Mode: {mode_text}")
+        update_colors()
+        plt.render()
+
+    plt.add_button(
+        toggle_mode,
+        pos=(0.05, 0.95),
+        states=["Clamp", "Support"],
+        c=["lightblue", "lightgreen"],
+        bc=["black", "black"],
+        font="Courier",
+        size=24,
+        bold=True,
+    )
+
     plt.show(interactive=True)
 
 # ============================================================
