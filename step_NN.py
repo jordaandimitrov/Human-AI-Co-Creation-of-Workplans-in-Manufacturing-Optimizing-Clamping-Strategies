@@ -101,6 +101,7 @@ def extract_face_features(shape, apply_local_frame=True):
         exp.Next()
 
     # Compute all vertices for PCA
+
     all_vertices = []
     for face in all_faces:
         loc = face.Location()

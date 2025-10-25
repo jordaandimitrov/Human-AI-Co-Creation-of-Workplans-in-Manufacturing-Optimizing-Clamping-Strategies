@@ -26,7 +26,7 @@ base_name = os.path.splitext(os.path.basename(file_path))[0]
 # -----------------------------
 mesh = o3d.io.read_triangle_mesh(file_path)
 mesh.compute_vertex_normals()
-pcd = mesh.sample_points_uniformly(number_of_points=50000)
+pcd = mesh.sample_points_uniformly(number_of_points=5000)
 points = np.asarray(pcd.points)
 
 # -----------------------------
@@ -55,7 +55,7 @@ print(f"Picked seed point indices: {picked_indices}")
 # -----------------------------
 # 4. Find k nearest neighbors for each seed
 # -----------------------------
-k = 20
+k = 50
 nbrs = NearestNeighbors(n_neighbors=k, algorithm='auto').fit(points)
 
 all_selected_indices = set()  # use a set to avoid duplicates

@@ -49,7 +49,7 @@ def mesh_faces(shape):
 def interactive_labeling(save_json="labels.json"):
     # Open file explorer
     Tk().withdraw()
-    file_path = askopenfilename(title="Select an STP file", filetypes=[("STP files", "*.stp")])
+    file_path = askopenfilename(title="Select an STP file", filetypes=[("STEP files", "*.step"), ("STP files", "*.stp")])
     if not file_path:
         print("No file selected. Exiting.")
         return
