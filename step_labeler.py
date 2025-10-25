@@ -2,7 +2,7 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 import json
 import numpy as np
-from vedo import Mesh, Plotter
+from vedo import Mesh, Plotter, Text2D, Spheres
 from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.TopExp import TopExp_Explorer
@@ -41,7 +41,7 @@ def mesh_faces(shape):
                               triang.Triangle(i).Get()[1]-1,
                               triang.Triangle(i).Get()[2]-1]
                              for i in range(1, triang.NbTriangles() + 1)])
-            mesh = Mesh([nodes, tris], c="lightgray", alpha=1.0)
+            mesh = Mesh([nodes, tris], c="lightgray", alpha=0.7)
             meshes.append(mesh)
             face_indices.append(idx)
         exp.Next()
@@ -49,11 +49,7 @@ def mesh_faces(shape):
     return meshes, face_indices
 
 
-from vedo import Plotter, Mesh, Text2D
-
-
 def interactive_labeling(save_json="labels.json"):
-    # --- File picker ---
     Tk().withdraw()
     file_path = askopenfilename(
         title="Select an STP file",
@@ -66,14 +62,12 @@ def interactive_labeling(save_json="labels.json"):
     shape = read_step_file(file_path)
     meshes, face_indices = mesh_faces(shape)
 
-    # --- State ---
     selected_clamp = set()
     selected_support = set()
     mode = ["clamp"]
 
     pl = Plotter(title="Face Labeler (Press C/U to toggle mode, S to save)")
 
-    # Text2D overlay for mode info
     mode_text = Text2D("Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save",
                        pos="top-left", c="yellow", bg="black", font="courier")
     pl.add(mode_text)
@@ -103,7 +97,7 @@ def interactive_labeling(save_json="labels.json"):
                 selected_clamp.remove(idx)
             else:
                 selected_clamp.add(idx)
-        else:  # support mode
+        else:
             if idx in selected_support:
                 selected_support.remove(idx)
             else:
@@ -116,11 +110,9 @@ def interactive_labeling(save_json="labels.json"):
 
         if key == "c":
             mode[0] = "clamp"
-            print("🔴 Switched to CLAMP mode.")
             update_text()
         elif key == "u":
             mode[0] = "support"
-            print("🔵 Switched to SUPPORT mode.")
             update_text()
         elif key == "s":
             clamp_labels = [1 if i in selected_clamp else 0 for i in face_indices]
@@ -144,17 +136,21 @@ def interactive_labeling(save_json="labels.json"):
 
         update_colors()
 
-    # Attach face indices to meshes
+    # Attach meshes and spheres at mesh points
     for m, idx in zip(meshes, face_indices):
         m.user_data = idx
         pl.add(m)
+
+        # Add spheres at mesh vertices
+        pts = m.points
+        spheres = Spheres(pts, r=0.5, c="orange")  # radius adjustable
+        pl.add(spheres)
 
     pl.add_callback("mouse click", on_click)
     pl.add_callback("key press", on_key)
     update_colors()
 
     pl.show(interactive=True)
-
 
 
 if __name__ == "__main__":
