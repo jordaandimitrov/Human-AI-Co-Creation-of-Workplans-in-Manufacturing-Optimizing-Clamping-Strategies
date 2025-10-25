@@ -445,25 +445,37 @@ def visualize_faces(shape, clamp_probs, support_probs):
 
     # --- Toggle Button ---
     # Add this flag outside the toggle_mode function
+    # Mutable state
+    view_mode = {"current": 0}
     last_toggle_time = {"ts": 0}
 
-    def toggle_mode(widget, event):
+    # Callback
+    def toggle_mode(widget, event=None):
         import time
         now = time.time()
-        if now - last_toggle_time["ts"] < 0.3:  # 300ms debounce
+        if now - last_toggle_time["ts"] < 0.3:  # debounce 300ms
             return
         last_toggle_time["ts"] = now
 
+        # Toggle mode
         view_mode["current"] = 1 - view_mode["current"]
         mode_text = "Clamp" if view_mode["current"] == 0 else "Support"
+
+        # Update overlay
         overlay.text(f"Mode: {mode_text}")
+
+        # Update button label
+        btn.text(mode_text)
+
+        # Update face colors
         update_colors()
         plt.render()
 
-    plt.add_button(
+    # Add button and capture the returned Button object
+    btn = plt.add_button(
         toggle_mode,
         pos=(0.05, 0.95),
-        states=["Clamp", "Support"],
+        states=["Clamp", "Support"],  # required but we override manually
         c=["lightblue", "lightgreen"],
         bc=["black", "black"],
         font="Courier",
@@ -472,6 +484,7 @@ def visualize_faces(shape, clamp_probs, support_probs):
     )
 
     plt.show(interactive=True)
+
 
 # ============================================================
 # STEP 7: Main Execution (train/load and test with toggle)
