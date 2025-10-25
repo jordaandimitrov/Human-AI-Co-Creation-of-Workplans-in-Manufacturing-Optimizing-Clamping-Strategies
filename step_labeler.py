@@ -1,15 +1,16 @@
-import json
-from vedo import Plotter, Mesh
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
+import json
+import numpy as np
+from vedo import Mesh, Plotter
 from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE
-from OCC.Core.TopoDS import topods
-from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
 from OCC.Core.BRep import BRep_Tool
-import numpy as np
+from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+from OCC.Core.TopoDS import topods
+
 
 def read_step_file(filename):
     reader = STEPControl_Reader()
@@ -18,6 +19,7 @@ def read_step_file(filename):
         raise ValueError("Error reading STEP file")
     reader.TransferRoots()
     return reader.OneShape()
+
 
 def mesh_faces(shape):
     """Mesh faces and return list of Mesh objects and their indices"""
@@ -46,57 +48,113 @@ def mesh_faces(shape):
         idx += 1
     return meshes, face_indices
 
+
+from vedo import Plotter, Mesh, Text2D
+
 def interactive_labeling(save_json="labels.json"):
-    # Open file explorer
+    # --- File picker ---
     Tk().withdraw()
-    file_path = askopenfilename(title="Select an STP file", filetypes=[("STEP files", "*.step"), ("STP files", "*.stp")])
+    file_path = askopenfilename(
+        title="Select an STP file",
+        filetypes=[("STEP files", "*.step"), ("STP files", "*.stp")]
+    )
     if not file_path:
         print("No file selected. Exiting.")
         return
 
     shape = read_step_file(file_path)
     meshes, face_indices = mesh_faces(shape)
-    selected = set()  # indices of selected faces
 
-    pl = Plotter(title="Click faces to select clamping faces (red)")
+    # --- State ---
+    selected_clamp = set()
+    selected_support = set()
+    mode = ["clamp"]
+
+    pl = Plotter(title="Face Labeler (Press C/U to toggle mode, S to save)")
+
+    # Text2D overlay for mode info
+    mode_text = Text2D("Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save",
+                       pos="top-left", c="yellow", bg="black", font="courier")
+    pl.add(mode_text)
+
+    def update_text():
+        mode_text.text(f"Mode: {mode[0].upper()}  [C]=Clamp  [U]=Support  [S]=Save")
+        mode_text.c("yellow" if mode[0] == "clamp" else "cyan")
+
+    def update_colors():
+        for m, idx in zip(meshes, face_indices):
+            if idx in selected_clamp:
+                m.c("red")
+            elif idx in selected_support:
+                m.c("blue")
+            else:
+                m.c("lightgray")
+        pl.render()
 
     def on_click(evt):
         mesh = evt.actor
         if mesh is None:
             return
-        # Toggle selection
         idx = mesh.user_data
-        if idx in selected:
-            selected.remove(idx)
-            mesh.c("lightgray")
-        else:
-            selected.add(idx)
-            mesh.c("red")
-        pl.render()
 
-    # Attach face index to each mesh
-    for m, idx in zip(meshes, face_indices):
-        m.user_data = idx
-        pl.add(m)
+        if mode[0] == "clamp":
+            if idx in selected_clamp:
+                selected_clamp.remove(idx)
+            else:
+                selected_clamp.add(idx)
+        else:  # support mode
+            if idx in selected_support:
+                selected_support.remove(idx)
+            else:
+                selected_support.add(idx)
+
+        update_colors()
 
     def on_key(evt):
-        # evt.keypress is a string of the pressed key
-        if evt.keypress == "s":
-            labels = [1 if i in selected else 0 for i in face_indices]
+        key = evt.keypress.lower()
+
+        if key == "c":
+            mode[0] = "clamp"
+            print("🔴 Switched to CLAMP mode.")
+            update_text()
+        elif key == "u":
+            mode[0] = "support"
+            print("🔵 Switched to SUPPORT mode.")
+            update_text()
+        elif key == "s":
+            clamp_labels = [1 if i in selected_clamp else 0 for i in face_indices]
+            support_labels = [1 if i in selected_support else 0 for i in face_indices]
+
             try:
                 with open(save_json) as f:
                     all_labels = json.load(f)
             except:
                 all_labels = {}
-            all_labels[file_path] = labels
+
+            all_labels[file_path] = {
+                "clamp_labels": clamp_labels,
+                "support_labels": support_labels
+            }
+
             with open(save_json, "w") as f:
                 json.dump(all_labels, f, indent=4)
-            print(f"Saved labels for {file_path}")
 
-    pl.add_callback("key press", on_key)
+            print(f"💾 Saved labels for {file_path}")
+
+        update_colors()
+
+    # Attach face indices to meshes
+    for m, idx in zip(meshes, face_indices):
+        m.user_data = idx
+        pl.add(m)
+
     pl.add_callback("mouse click", on_click)
+    pl.add_callback("key press", on_key)
+    update_colors()
+
     pl.show(interactive=True)
 
-# Run the interactive labeling
+
+
 if __name__ == "__main__":
     interactive_labeling("labels.json")
