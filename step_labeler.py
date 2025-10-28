@@ -22,7 +22,6 @@ def read_step_file(filename):
 
 # ---------------- Mesh generation ----------------
 def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
-    """Tessellate entire STEP shape and produce a single connected mesh."""
     BRepMesh_IncrementalMesh(shape, linear_deflection, False, angular_deflection, True)
 
     all_points = []
@@ -38,19 +37,16 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
             exp.Next()
             continue
 
-        # Vertices
         n_nodes = triangulation.NbNodes()
         nodes = np.array([[triangulation.Node(i).X(),
                            triangulation.Node(i).Y(),
                            triangulation.Node(i).Z()] for i in range(1, n_nodes+1)])
 
-        # Triangles
         n_tris = triangulation.NbTriangles()
         tris = np.array([[triangulation.Triangle(i).Value(1)-1,
                           triangulation.Triangle(i).Value(2)-1,
                           triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
 
-        # Weld vertices
         for i, p in enumerate(nodes):
             key = tuple(np.round(p, 6))
             if key not in point_map:
@@ -106,7 +102,10 @@ def subdivide_mesh(mesh, levels=1):
     return Mesh([points, tris], c=mesh.c(), alpha=mesh.alpha())
 
 # ---------------- Interactive labeling ----------------
-def interactive_labeling(save_json="labels.json", subdivide_levels=1):
+def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_brush=5.0):
+    global BRUSH_RADIUS
+    BRUSH_RADIUS = initial_brush
+
     Tk().withdraw()
     file_path = askopenfilename(
         title="Select an STP file",
@@ -122,23 +121,21 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1):
         print("No valid mesh generated.")
         return
 
-    # Subdivide triangles for more points
     if subdivide_levels > 0:
         mesh = subdivide_mesh(mesh, levels=subdivide_levels)
 
-    selected_points = set()  # global vertex indices
+    selected_points = set()
     mode = ["clamp"]
-    BRUSH_RADIUS = 5.0  # adjust to your model units
 
     pl = Plotter(title="Brush Labeler (C/U=mode, S=save, click to paint)")
-
-    mode_text = Text2D("Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save",
+    mode_text = Text2D(f"Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save  | Brush: {BRUSH_RADIUS:.1f}",
                        pos="top-left", c="yellow", bg="black", font="courier")
     pl.add(mode_text)
     pl.add(mesh)
 
+    # ---------------- Update functions ----------------
     def update_text():
-        mode_text.text(f"Mode: {mode[0].upper()}  [C]=Clamp  [U]=Support  [S]=Save")
+        mode_text.text(f"Mode: {mode[0].upper()}  [C]=Clamp  [U]=Support  [S]=Save  | Brush: {BRUSH_RADIUS:.1f}")
         mode_text.c("yellow" if mode[0] == "clamp" else "cyan")
         pl.render()
 
@@ -154,7 +151,7 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1):
 
     def save_labels():
         clamp_array = [1 if i in selected_points else 0 for i in range(len(mesh.points))]
-        support_array = [0]*len(mesh.points)
+        support_array = [0] * len(mesh.points)
         try:
             with open(save_json) as f:
                 all_labels = json.load(f)
@@ -162,13 +159,16 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1):
             all_labels = {}
         all_labels[file_path] = {
             "clamp_labels": clamp_array,
-            "support_labels": support_array
+            "support_labels": support_array,
+            "subdivide_levels": subdivide_levels  # <-- save subdivision level
         }
         with open(save_json, "w") as f:
             json.dump(all_labels, f, indent=4)
         print(f"💾 Saved labels for {file_path}")
 
+    # ---------------- Callbacks ----------------
     def on_key(evt):
+        global BRUSH_RADIUS
         key = evt.keypress.lower()
         if key == "c":
             mode[0] = "clamp"
@@ -176,6 +176,10 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1):
             mode[0] = "support"
         elif key == "s":
             save_labels()
+        elif key == "y" or key == "y":
+            BRUSH_RADIUS += 1.0
+        elif key == "t" or key == "t":
+            BRUSH_RADIUS = max(0.1, BRUSH_RADIUS - 1.0)
         update_text()
         update_colors()
 
@@ -197,4 +201,4 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1):
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
-    interactive_labeling("labels.json", subdivide_levels=2)
+    interactive_labeling("labels.json", subdivide_levels=5, initial_brush=5.0)
