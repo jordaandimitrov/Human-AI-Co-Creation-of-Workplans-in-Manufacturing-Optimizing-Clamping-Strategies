@@ -186,7 +186,7 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
 
     def save_labels():
         clamp_array = [1 if i in selected_clamp else 0 for i in range(len(subdivided_mesh.points))]
-        support_array = [1 if i in selected_support else 0 for i in range(len(subdivided_mesh.points))]
+        support_array = [1 if i in selected_support else 0 for i in face_indices]
         try:
             with open(save_json) as f:
                 all_labels = json.load(f)
@@ -242,4 +242,4 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
-    interactive_labeling("labels.json", subdivide_levels=3, initial_brush=5.0)
+    interactive_labeling("labels.json", subdivide_levels=5, initial_brush=5.0)
