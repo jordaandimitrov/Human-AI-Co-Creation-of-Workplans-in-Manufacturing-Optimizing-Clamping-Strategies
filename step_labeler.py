@@ -28,41 +28,61 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
     all_tris = []
     point_map = {}
     current_index = 0
+    face_to_points = {}
+    full_face_meshes = []
+    face_indices = []
 
     exp = TopExp_Explorer(shape, TopAbs_FACE)
+    idx = 0
     while exp.More():
         face = topods.Face(exp.Current())
         triangulation = BRep_Tool.Triangulation(face, face.Location())
         if triangulation is None:
             exp.Next()
+            idx += 1
             continue
 
+        # Nodes
         n_nodes = triangulation.NbNodes()
         nodes = np.array([[triangulation.Node(i).X(),
                            triangulation.Node(i).Y(),
                            triangulation.Node(i).Z()] for i in range(1, n_nodes+1)])
 
+        # Triangles
         n_tris = triangulation.NbTriangles()
         tris = np.array([[triangulation.Triangle(i).Value(1)-1,
                           triangulation.Triangle(i).Value(2)-1,
                           triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
 
+        # Map points globally
+        face_point_set = set()
         for i, p in enumerate(nodes):
             key = tuple(np.round(p, 6))
             if key not in point_map:
                 point_map[key] = current_index
                 all_points.append(p)
                 current_index += 1
+            face_point_set.add(point_map[key])
 
         for tri in tris:
             all_tris.append([point_map[tuple(np.round(nodes[i], 6))] for i in tri])
 
+        # Full face mesh (for support selection)
+        full_mesh = Mesh([nodes, tris], c="lightgray", alpha=0.5)
+        full_mesh.user_data = idx
+        full_face_meshes.append(full_mesh)
+
+        face_to_points[idx] = face_point_set
+        face_indices.append(idx)
+
         exp.Next()
+        idx += 1
 
     if len(all_points) == 0 or len(all_tris) == 0:
-        return None
+        return None, {}, [], []
 
-    return Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
+    subdivided_mesh = Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
+    return subdivided_mesh, face_to_points, face_indices, full_face_meshes
 
 # ---------------- Triangle subdivision ----------------
 def subdivide_mesh(mesh, levels=1):
@@ -116,22 +136,26 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         return
 
     shape = read_step_file(file_path)
-    mesh = mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5)
-    if mesh is None:
+    subdivided_mesh, face_to_points, face_indices, full_face_meshes = mesh_faces(shape)
+    if subdivided_mesh is None:
         print("No valid mesh generated.")
         return
 
     if subdivide_levels > 0:
-        mesh = subdivide_mesh(mesh, levels=subdivide_levels)
+        subdivided_mesh = subdivide_mesh(subdivided_mesh, levels=subdivide_levels)
 
-    selected_points = set()
+    selected_clamp = set()
+    selected_support = set()
     mode = ["clamp"]
 
-    pl = Plotter(title="Brush Labeler (C/U=mode, S=save, click to paint)")
+    pl = Plotter(title="Face/Brush Labeler (C/U=mode, S=save)")
+
     mode_text = Text2D(f"Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save  | Brush: {BRUSH_RADIUS:.1f}",
                        pos="top-left", c="yellow", bg="black", font="courier")
     pl.add(mode_text)
-    pl.add(mesh)
+    pl.add(subdivided_mesh)
+    for fm in full_face_meshes:
+        pl.add(fm)
 
     # ---------------- Update functions ----------------
     def update_text():
@@ -140,18 +164,29 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         pl.render()
 
     def update_colors():
-        tris = np.array(mesh.cells).reshape(-1, 3)
+        # Subdivided mesh coloring for clamp
+        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
         face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
         for i, tri in enumerate(tris):
-            if any(v in selected_points for v in tri):
-                face_colors[i] = [255, 0, 0] if mode[0]=="clamp" else [0, 0, 255]
-        mesh.cellcolors = face_colors
-        mesh.modified()
+            if any(v in selected_clamp for v in tri):
+                face_colors[i] = [255, 0, 0]
+            elif any(v in selected_support for v in tri):
+                face_colors[i] = [0, 0, 255]
+        subdivided_mesh.cellcolors = face_colors
+
+        # Full face meshes for support selection
+        for fm in full_face_meshes:
+            if fm.user_data in selected_support:
+                fm.c("blue")
+            else:
+                fm.c("lightgray")
+
+        subdivided_mesh.modified()
         pl.render()
 
     def save_labels():
-        clamp_array = [1 if i in selected_points else 0 for i in range(len(mesh.points))]
-        support_array = [0] * len(mesh.points)
+        clamp_array = [1 if i in selected_clamp else 0 for i in range(len(subdivided_mesh.points))]
+        support_array = [1 if i in selected_support else 0 for i in range(len(subdivided_mesh.points))]
         try:
             with open(save_json) as f:
                 all_labels = json.load(f)
@@ -160,7 +195,7 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         all_labels[file_path] = {
             "clamp_labels": clamp_array,
             "support_labels": support_array,
-            "subdivide_levels": subdivide_levels  # <-- save subdivision level
+            "subdivide_levels": subdivide_levels
         }
         with open(save_json, "w") as f:
             json.dump(all_labels, f, indent=4)
@@ -176,9 +211,9 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
             mode[0] = "support"
         elif key == "s":
             save_labels()
-        elif key == "y" or key == "y":
+        elif key == "y":
             BRUSH_RADIUS += 1.0
-        elif key == "t" or key == "t":
+        elif key == "t":
             BRUSH_RADIUS = max(0.1, BRUSH_RADIUS - 1.0)
         update_text()
         update_colors()
@@ -186,11 +221,17 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
     def on_click(evt):
         if evt.picked3d is None:
             return
-        click_point = np.array(evt.picked3d)
-        dists = np.linalg.norm(mesh.points - click_point, axis=1)
-        selected = np.where(dists <= BRUSH_RADIUS)[0]
-        for idx in selected:
-            selected_points.add(idx)
+        click_actor = evt.actor
+
+        if mode[0] == "clamp":
+            click_point = np.array(evt.picked3d)
+            dists = np.linalg.norm(subdivided_mesh.points - click_point, axis=1)
+            selected = np.where(dists <= BRUSH_RADIUS)[0]
+            selected_clamp.update(selected)
+        else:
+            if click_actor in full_face_meshes:
+                face_idx = click_actor.user_data
+                selected_support.add(face_idx)
         update_colors()
 
     pl.add_callback("key press", on_key)
@@ -201,4 +242,4 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
-    interactive_labeling("labels.json", subdivide_levels=5, initial_brush=5.0)
+    interactive_labeling("labels.json", subdivide_levels=3, initial_brush=5.0)

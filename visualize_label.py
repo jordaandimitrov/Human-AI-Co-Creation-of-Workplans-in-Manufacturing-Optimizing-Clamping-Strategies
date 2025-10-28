@@ -20,7 +20,7 @@ def read_step_file(filename):
     reader.TransferRoots()
     return reader.OneShape()
 
-# ---------------- Mesh generation ----------------
+# ---------------- Mesh generation with full face mapping ----------------
 def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
     BRepMesh_IncrementalMesh(shape, linear_deflection, False, angular_deflection, True)
 
@@ -28,43 +28,61 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
     all_tris = []
     point_map = {}
     current_index = 0
+    full_face_meshes = []
+    face_to_points = {}
 
     exp = TopExp_Explorer(shape, TopAbs_FACE)
+    idx = 0
     while exp.More():
         face = topods.Face(exp.Current())
         triangulation = BRep_Tool.Triangulation(face, face.Location())
         if triangulation is None:
             exp.Next()
+            idx += 1
             continue
 
+        # Nodes
         n_nodes = triangulation.NbNodes()
         nodes = np.array([[triangulation.Node(i).X(),
                            triangulation.Node(i).Y(),
                            triangulation.Node(i).Z()] for i in range(1, n_nodes+1)])
 
+        # Triangles
         n_tris = triangulation.NbTriangles()
         tris = np.array([[triangulation.Triangle(i).Value(1)-1,
                           triangulation.Triangle(i).Value(2)-1,
                           triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
 
+        # Global points mapping
+        face_point_set = set()
         for i, p in enumerate(nodes):
             key = tuple(np.round(p, 6))
             if key not in point_map:
                 point_map[key] = current_index
                 all_points.append(p)
                 current_index += 1
+            face_point_set.add(point_map[key])
+        face_to_points[idx] = face_point_set
 
+        # Full face mesh
+        full_mesh = Mesh([nodes, tris], c="lightgray", alpha=0.5)
+        full_mesh.user_data = idx
+        full_face_meshes.append(full_mesh)
+
+        # Add triangles to main mesh
         for tri in tris:
             all_tris.append([point_map[tuple(np.round(nodes[i], 6))] for i in tri])
 
         exp.Next()
+        idx += 1
 
     if len(all_points) == 0 or len(all_tris) == 0:
-        return None
+        return None, [], {}
 
-    return Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
+    subdivided_mesh = Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
+    return subdivided_mesh, full_face_meshes, face_to_points
 
-# ---------------- Subdivision (same as labeler) ----------------
+# ---------------- Subdivision ----------------
 def subdivide_mesh(mesh, levels=1):
     points = mesh.points
     tris = np.array(mesh.cells).reshape(-1, 3)
@@ -95,7 +113,6 @@ def subdivide_mesh(mesh, levels=1):
                 [v2, m20, m12],
                 [m01, m12, m20]
             ])
-
         points = np.array(new_points)
         tris = np.array(new_tris)
 
@@ -121,31 +138,35 @@ def visualize_labels(step_file, labels_file):
 
     # Read STEP and generate mesh
     shape = read_step_file(step_file)
-    mesh = mesh_faces(shape)
-    if mesh is None:
+    subdivided_mesh, full_face_meshes, face_to_points = mesh_faces(shape)
+    if subdivided_mesh is None:
         raise ValueError("Could not generate mesh from STEP file.")
 
-    # ---------------- Apply the same subdivision as labeler ----------------
+    # Apply same subdivision as used in labeler
     if subdivide_levels > 0:
-        mesh = subdivide_mesh(mesh, levels=subdivide_levels)
+        subdivided_mesh = subdivide_mesh(subdivided_mesh, levels=subdivide_levels)
 
-    # ---------------- Apply discrete coloring per triangle ----------------
-    tris = np.array(mesh.cells).reshape(-1, 3)
-    n_faces = len(tris)
-    face_colors = np.full((n_faces, 3), 200, dtype=np.uint8)  # default gray
-
+    # ---------------- Apply colors ----------------
+    # Clamp: subdivided mesh
+    tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
+    face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
     for i, tri in enumerate(tris):
         if any(idx < len(clamp_points) and clamp_points[idx] == 1 for idx in tri):
             face_colors[i] = [255, 0, 0]
-        elif any(idx < len(support_points) and support_points[idx] == 1 for idx in tri):
-            face_colors[i] = [0, 0, 255]
+    subdivided_mesh.cellcolors = face_colors
 
-    mesh.cellcolors = face_colors
-    mesh.alpha(1.0)
+    # Support: full faces
+    for fm in full_face_meshes:
+        if fm.user_data < len(support_points) and support_points[fm.user_data] == 1:
+            fm.c("blue")
+        else:
+            fm.c("lightgray")
 
     # ---------------- Show mesh ----------------
     pl = Plotter(title="Selected Patches Viewer")
-    pl.add(mesh)
+    pl.add(subdivided_mesh)
+    for fm in full_face_meshes:
+        pl.add(fm)
     pl.show(interactive=True, axes=1, viewup="z", resetcam=True)
 
 # ---------------- Main ----------------
