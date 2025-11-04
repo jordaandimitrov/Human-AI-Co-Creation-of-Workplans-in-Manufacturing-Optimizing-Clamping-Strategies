@@ -234,61 +234,74 @@ def extract_triangle_features(shape, mesh_deflection=0.05, subdivide_levels=2):
 # STEP 2: Dataset per triangle
 # ============================================================
 
+# ============================================================
+# Updated TriangleDataset and JSON loader for new format
+# ============================================================
+
+import os
+import json
+import numpy as np
+from torch.utils.data import Dataset
+
+# ------------------------------------------------------------
+# TriangleDataset: assign labels directly from JSON indices
+# ------------------------------------------------------------
 class TriangleDataset(Dataset):
-    def __init__(self, parts, clamp_rule="any", augment_rot=True):
+    def __init__(self, parts, augment_rot=True):
+        """
+        parts: list of dicts with keys:
+            'tri_features', 'tri_verts', 'tri_to_face', 'face_to_tri', 'points', 'labels'
+        """
         self.parts = parts
-        self.clamp_rule = clamp_rule
         self.augment_rot = augment_rot
 
     def __len__(self):
-        # total triangles across all parts
         return sum(p["tri_features"].shape[0] for p in self.parts)
 
     def __getitem__(self, idx):
-        # find which part this idx belongs to
+        # Determine which part this triangle belongs to
         for p in self.parts:
             n_tri = p["tri_features"].shape[0]
             if idx < n_tri:
                 X = p["tri_features"].copy()
                 tri_verts = p["tri_verts"]
-                tri_to_face = p["tri_to_face"]
+                tri_to_face = np.array(p["tri_to_face"], dtype=int)
                 labels = p["labels"]
                 break
             idx -= n_tri
         else:
             raise IndexError("Triangle index out of range")
 
-        # assign labels using tri_to_face
         n_tri = X.shape[0]
         tri_clamp = np.zeros(n_tri, dtype=np.float32)
         tri_support = np.zeros(n_tri, dtype=np.float32)
-        clamp_points = np.array(labels.get("clamp_labels", []), dtype=np.int32)
-        support_faces = np.array(labels.get("support_labels", []), dtype=np.int32)
 
-        for i in range(n_tri):
-            verts = tri_verts[i]
-            # Clamp: check if any vertex is a clamp point
-            if clamp_points.size > 0:
-                if self.clamp_rule == "any":
-                    tri_clamp[i] = 1.0 if any(clamp_points[v] for v in verts) else 0.0
-                else:
-                    tri_clamp[i] = 1.0 if sum(clamp_points[v] for v in verts) >= 2 else 0.0
-            # Support: assign based on the original face
-            pf = tri_to_face[i]
-            if pf >= 0 and pf < support_faces.size:
-                tri_support[i] = float(support_faces[pf])
+        # ------------------ Assign clamp labels ------------------
+        clamp_tris = np.array(labels.get("clamp_tris", []), dtype=int)
+        if len(clamp_tris) > 0:
+            tri_clamp[clamp_tris] = 1.0
 
-        # Optional augmentation
+        # ------------------ Assign support labels ----------------
+        support_faces = np.array(labels.get("support_faces", []), dtype=int)
+        if len(support_faces) > 0:
+            tri_support = np.isin(tri_to_face, support_faces).astype(np.float32)
+
+        # Optional rotation augmentation
         if self.augment_rot and X.shape[1] >= 9:
             angle = np.random.uniform(0, 2 * np.pi)
             R = np.array([[np.cos(angle), -np.sin(angle), 0],
                           [np.sin(angle), np.cos(angle), 0],
                           [0, 0, 1]])
+            # rotate normals and centroids
             X[:, 3:6] = X[:, 3:6] @ R.T
             X[:, 6:9] = X[:, 6:9] @ R.T
 
+        import torch
         return torch.tensor(X, dtype=torch.float32), torch.tensor(
-            np.stack([tri_clamp, tri_support], axis=1), dtype=torch.float32)
+            np.stack([tri_clamp, tri_support], axis=1), dtype=torch.float32
+        )
+
+
 
 
 # ============================================================
@@ -343,9 +356,6 @@ def train_model_triangles(model, dataloader, epochs=50, lr=1e-3, device=None):
 # STEP 5: Predict triangles
 # ============================================================
 
-# ============================================================
-# STEP 5: Predict triangles
-# ============================================================
 
 def predict_best_triangles(model, features, top_k=5, zero_support=False):
     """
@@ -438,43 +448,35 @@ def visualize_triangles(points, tris, tri_probs):
 # STEP 7: Load labels helper
 # ============================================================
 
+# ------------------------------------------------------------
+# Load labeled dataset from JSON
+# ------------------------------------------------------------
 def load_labeled_dataset(labels_file):
     with open(labels_file) as f:
-        all_labels=json.load(f)
-    all_parts=[]
+        all_labels = json.load(f)
+
+    all_parts = []
     for stp_file, labels in all_labels.items():
         if not os.path.exists(stp_file):
             print(f"⚠️ {stp_file} not found, skipping")
             continue
         try:
-            shape=read_step_file(stp_file)
             subdivide_levels = labels.get("subdivide_levels", 0)
+            shape = read_step_file(stp_file)
             tri_feats, tri_verts, tri_to_face, face_to_tri, points = extract_triangle_features(
                 shape, mesh_deflection=0.05, subdivide_levels=subdivide_levels
             )
-
-            if tri_feats is None:
-                continue
-            nfaces=len(face_to_tri)
-            if isinstance(labels,dict):
-                cl=labels.get("clamp_labels",[])
-                sp=labels.get("support_labels",[])
-                if len(cl)!=nfaces or len(sp)!=nfaces:
-                    print(f"⚠️ Label mismatch {stp_file}")
-                label_obj={"clamp_labels":cl,"support_labels":sp}
-            else:
-                label_obj={"clamp_labels":labels,"support_labels":[0]*nfaces}
             all_parts.append({
                 "tri_features": tri_feats,
                 "tri_verts": tri_verts,
                 "tri_to_face": tri_to_face,
                 "face_to_tri": face_to_tri,
                 "points": points,
-                "labels": label_obj,
+                "labels": labels,
                 "file_path": stp_file
             })
         except Exception as e:
-            print(f"⚠️ Error reading {stp_file}: {e}")
+            print(f"⚠️ Error processing {stp_file}: {e}")
             continue
     return all_parts
 
@@ -519,6 +521,8 @@ if __name__=="__main__":
         if not test_file:
             break
         shape=read_step_file(test_file)
+
+
         tri_feats, tri_verts, tri_to_face, face_to_tri, points = extract_triangle_features(shape)
         tops, probs = predict_best_triangles(trained_model, tri_feats, top_k=5, zero_support=True)
         print("\n=== Triangle Probabilities (Clamp | Support) ===")
