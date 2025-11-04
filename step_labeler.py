@@ -11,6 +11,8 @@ from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE
 from OCC.Core.TopoDS import topods
 
+NORMAL_TOLERANCE = 0.95  # cosine similarity threshold (~18 degrees)
+
 # ---------------- STEP file reading ----------------
 def read_step_file(filename):
     reader = STEPControl_Reader()
@@ -145,7 +147,13 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
     undo_stack = []  # Store previous selections
     mode = ["clamp"]
 
-    pl = Plotter(title="Face/Brush Labeler (1=Undo, C/U=mode, S=save)")
+    # Compute triangle normals
+    tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
+    points = subdivided_mesh.points
+    triangle_normals = np.array([np.cross(points[t[1]] - points[t[0]], points[t[2]] - points[t[0]]) for t in tris])
+    triangle_normals /= np.linalg.norm(triangle_normals, axis=1)[:, None] + 1e-12
+
+    pl = Plotter(title="Face/Brush Labeler (1=Undo, D=Delete, C/U=mode, S=save)")
 
     mode_text = Text2D(f"Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save  | Brush: {BRUSH_RADIUS:.1f}",
                        pos="top-left", c="yellow", bg="black", font="courier")
@@ -161,7 +169,6 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         pl.render()
 
     def update_colors():
-        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
         face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
         for i, tri in enumerate(tris):
             if i in selected_clamp_tris:
@@ -171,17 +178,13 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         subdivided_mesh.cellcolors = face_colors
 
         for fm in full_face_meshes:
-            if fm.user_data in selected_support:
-                fm.c("blue")
-            else:
-                fm.c("lightgray")
+            fm.c("blue" if fm.user_data in selected_support else "lightgray")
 
         subdivided_mesh.modified()
         pl.render()
 
     def save_labels():
-        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
-        clamp_array = [0] * len(subdivided_mesh.points)
+        clamp_array = [0] * len(points)
         for t in selected_clamp_tris:
             for v in tris[t]:
                 clamp_array[v] = 1
@@ -208,7 +211,7 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         global BRUSH_RADIUS
         key = evt.keypress.lower()
 
-        # --- Undo ---
+        # Undo
         if key == "1":
             if undo_stack:
                 prev_clamp, prev_support = undo_stack.pop()
@@ -222,10 +225,13 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
                 print("⚠️ No actions to undo.")
             return
 
+        # Mode switching
         if key == "c":
             mode[0] = "clamp"
         elif key == "u":
             mode[0] = "support"
+        elif key == "d":
+            mode[0] = "delete"
         elif key == "s":
             save_labels()
         elif key == "y":
@@ -239,21 +245,40 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         if evt.picked3d is None:
             return
 
-        # Save current selection for undo
         undo_stack.append((selected_clamp_tris.copy(), selected_support.copy()))
 
-        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
-        centroids = np.mean(subdivided_mesh.points[tris], axis=1)
         click_point = np.array(evt.picked3d)
+        centroids = np.mean(points[tris], axis=1)
         dists = np.linalg.norm(centroids - click_point, axis=1)
 
         if mode[0] == "clamp":
+            nearest_tri = np.argmin(dists)
+            nearest_normal = triangle_normals[nearest_tri]
+
             if BRUSH_RADIUS <= 1.0:
-                nearest_tri = np.argmin(dists)
-                selected_clamp_tris.add(nearest_tri)
+                candidate_tris = [nearest_tri]
             else:
-                selected_tris = np.where(dists <= BRUSH_RADIUS)[0]
-                selected_clamp_tris.update(selected_tris)
+                candidate_tris = np.where(dists <= BRUSH_RADIUS)[0]
+
+            # Normal filtering
+            candidate_tris = [t for t in candidate_tris if
+                              np.dot(triangle_normals[t], nearest_normal) >= NORMAL_TOLERANCE]
+            selected_clamp_tris.update(candidate_tris)
+
+        elif mode[0] == "delete":
+            nearest_tri = np.argmin(dists)
+            nearest_normal = triangle_normals[nearest_tri]
+
+            if BRUSH_RADIUS <= 1.0:
+                candidate_tris = [nearest_tri]
+            else:
+                candidate_tris = np.where(dists <= BRUSH_RADIUS)[0]
+
+            # Normal filtering
+            candidate_tris = [t for t in candidate_tris if
+                              np.dot(triangle_normals[t], nearest_normal) >= NORMAL_TOLERANCE]
+            # Remove from selection
+            selected_clamp_tris.difference_update(candidate_tris)
 
         elif mode[0] == "support":
             if evt.actor in full_face_meshes:
