@@ -507,7 +507,7 @@ if __name__=="__main__":
             except:
                 pass
         print("🚀 Training model...")
-        trained_model=train_model_triangles(model,dataloader,epochs=50,lr=1e-3)
+        trained_model=train_model_triangles(model,dataloader,epochs=3,lr=1e-3)
         torch.save(trained_model.state_dict(), model_path)
         torch.save(trained_model.state_dict(),f"clamp_support_model_{datetime.now():%Y%m%d_%H%M}.pth")
         print(f"✅ Model saved to {model_path}")
