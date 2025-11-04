@@ -42,19 +42,16 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
             idx += 1
             continue
 
-        # Nodes
         n_nodes = triangulation.NbNodes()
         nodes = np.array([[triangulation.Node(i).X(),
                            triangulation.Node(i).Y(),
-                           triangulation.Node(i).Z()] for i in range(1, n_nodes+1)])
+                           triangulation.Node(i).Z()] for i in range(1, n_nodes + 1)])
 
-        # Triangles
         n_tris = triangulation.NbTriangles()
-        tris = np.array([[triangulation.Triangle(i).Value(1)-1,
-                          triangulation.Triangle(i).Value(2)-1,
-                          triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
+        tris = np.array([[triangulation.Triangle(i).Value(1) - 1,
+                          triangulation.Triangle(i).Value(2) - 1,
+                          triangulation.Triangle(i).Value(3) - 1] for i in range(1, n_tris + 1)])
 
-        # Map points globally
         face_point_set = set()
         for i, p in enumerate(nodes):
             key = tuple(np.round(p, 6))
@@ -67,7 +64,6 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
         for tri in tris:
             all_tris.append([point_map[tuple(np.round(nodes[i], 6))] for i in tri])
 
-        # Full face mesh (for support selection)
         full_mesh = Mesh([nodes, tris], c="lightgray", alpha=0.5)
         full_mesh.user_data = idx
         full_face_meshes.append(full_mesh)
@@ -144,11 +140,12 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
     if subdivide_levels > 0:
         subdivided_mesh = subdivide_mesh(subdivided_mesh, levels=subdivide_levels)
 
-    selected_clamp = set()
+    selected_clamp_tris = set()  # Store triangle indices
     selected_support = set()
+    undo_stack = []  # Store previous selections
     mode = ["clamp"]
 
-    pl = Plotter(title="Face/Brush Labeler (C/U=mode, S=save)")
+    pl = Plotter(title="Face/Brush Labeler (1=Undo, C/U=mode, S=save)")
 
     mode_text = Text2D(f"Mode: CLAMP  [C]=Clamp  [U]=Support  [S]=Save  | Brush: {BRUSH_RADIUS:.1f}",
                        pos="top-left", c="yellow", bg="black", font="courier")
@@ -164,17 +161,15 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         pl.render()
 
     def update_colors():
-        # Subdivided mesh coloring for clamp
         tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
         face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
         for i, tri in enumerate(tris):
-            if any(v in selected_clamp for v in tri):
+            if i in selected_clamp_tris:
                 face_colors[i] = [255, 0, 0]
             elif any(v in selected_support for v in tri):
                 face_colors[i] = [0, 0, 255]
         subdivided_mesh.cellcolors = face_colors
 
-        # Full face meshes for support selection
         for fm in full_face_meshes:
             if fm.user_data in selected_support:
                 fm.c("blue")
@@ -185,13 +180,20 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         pl.render()
 
     def save_labels():
-        clamp_array = [1 if i in selected_clamp else 0 for i in range(len(subdivided_mesh.points))]
+        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
+        clamp_array = [0] * len(subdivided_mesh.points)
+        for t in selected_clamp_tris:
+            for v in tris[t]:
+                clamp_array[v] = 1
+
         support_array = [1 if i in selected_support else 0 for i in face_indices]
+
         try:
             with open(save_json) as f:
                 all_labels = json.load(f)
         except:
             all_labels = {}
+
         all_labels[file_path] = {
             "clamp_labels": clamp_array,
             "support_labels": support_array,
@@ -205,6 +207,21 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
     def on_key(evt):
         global BRUSH_RADIUS
         key = evt.keypress.lower()
+
+        # --- Undo ---
+        if key == "1":
+            if undo_stack:
+                prev_clamp, prev_support = undo_stack.pop()
+                selected_clamp_tris.clear()
+                selected_clamp_tris.update(prev_clamp)
+                selected_support.clear()
+                selected_support.update(prev_support)
+                print("↩️  Undo: restored previous selection")
+                update_colors()
+            else:
+                print("⚠️ No actions to undo.")
+            return
+
         if key == "c":
             mode[0] = "clamp"
         elif key == "u":
@@ -214,24 +231,38 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         elif key == "y":
             BRUSH_RADIUS += 1.0
         elif key == "t":
-            BRUSH_RADIUS = max(0.1, BRUSH_RADIUS - 1.0)
+            BRUSH_RADIUS = max(0.01, BRUSH_RADIUS - 0.5)
         update_text()
         update_colors()
 
     def on_click(evt):
         if evt.picked3d is None:
             return
-        click_actor = evt.actor
+
+        # Save current selection for undo
+        undo_stack.append((selected_clamp_tris.copy(), selected_support.copy()))
+
+        tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
+        centroids = np.mean(subdivided_mesh.points[tris], axis=1)
+        click_point = np.array(evt.picked3d)
+        dists = np.linalg.norm(centroids - click_point, axis=1)
 
         if mode[0] == "clamp":
-            click_point = np.array(evt.picked3d)
-            dists = np.linalg.norm(subdivided_mesh.points - click_point, axis=1)
-            selected = np.where(dists <= BRUSH_RADIUS)[0]
-            selected_clamp.update(selected)
-        else:
-            if click_actor in full_face_meshes:
-                face_idx = click_actor.user_data
-                selected_support.add(face_idx)
+            if BRUSH_RADIUS <= 1.0:
+                nearest_tri = np.argmin(dists)
+                selected_clamp_tris.add(nearest_tri)
+            else:
+                selected_tris = np.where(dists <= BRUSH_RADIUS)[0]
+                selected_clamp_tris.update(selected_tris)
+
+        elif mode[0] == "support":
+            if evt.actor in full_face_meshes:
+                face_idx = evt.actor.user_data
+                if face_idx in selected_support:
+                    selected_support.remove(face_idx)
+                else:
+                    selected_support.add(face_idx)
+
         update_colors()
 
     pl.add_callback("key press", on_key)
