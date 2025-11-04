@@ -184,12 +184,9 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
         pl.render()
 
     def save_labels():
-        clamp_array = [0] * len(points)
-        for t in selected_clamp_tris:
-            for v in tris[t]:
-                clamp_array[v] = 1
-
-        support_array = [1 if i in selected_support else 0 for i in face_indices]
+        # Convert triangle indices to regular Python ints
+        clamp_tris = [int(t) for t in selected_clamp_tris]
+        support_faces = [int(f) for f in selected_support]
 
         try:
             with open(save_json) as f:
@@ -198,8 +195,8 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
             all_labels = {}
 
         all_labels[file_path] = {
-            "clamp_labels": clamp_array,
-            "support_labels": support_array,
+            "clamp_tris": clamp_tris,
+            "support_faces": support_faces,
             "subdivide_levels": subdivide_levels
         }
         with open(save_json, "w") as f:

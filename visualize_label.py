@@ -20,7 +20,7 @@ def read_step_file(filename):
     reader.TransferRoots()
     return reader.OneShape()
 
-# ---------------- Mesh generation with full face mapping ----------------
+# ---------------- Mesh generation ----------------
 def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
     BRepMesh_IncrementalMesh(shape, linear_deflection, False, angular_deflection, True)
 
@@ -29,7 +29,6 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
     point_map = {}
     current_index = 0
     full_face_meshes = []
-    face_to_points = {}
 
     exp = TopExp_Explorer(shape, TopAbs_FACE)
     idx = 0
@@ -41,19 +40,16 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
             idx += 1
             continue
 
-        # Nodes
         n_nodes = triangulation.NbNodes()
         nodes = np.array([[triangulation.Node(i).X(),
                            triangulation.Node(i).Y(),
-                           triangulation.Node(i).Z()] for i in range(1, n_nodes+1)])
-
-        # Triangles
+                           triangulation.Node(i).Z()] for i in range(1, n_nodes + 1)])
         n_tris = triangulation.NbTriangles()
         tris = np.array([[triangulation.Triangle(i).Value(1)-1,
                           triangulation.Triangle(i).Value(2)-1,
                           triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
 
-        # Global points mapping
+        # Map points globally
         face_point_set = set()
         for i, p in enumerate(nodes):
             key = tuple(np.round(p, 6))
@@ -62,14 +58,13 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
                 all_points.append(p)
                 current_index += 1
             face_point_set.add(point_map[key])
-        face_to_points[idx] = face_point_set
 
         # Full face mesh
         full_mesh = Mesh([nodes, tris], c="lightgray", alpha=0.5)
         full_mesh.user_data = idx
         full_face_meshes.append(full_mesh)
 
-        # Add triangles to main mesh
+        # Triangles in main mesh
         for tri in tris:
             all_tris.append([point_map[tuple(np.round(nodes[i], 6))] for i in tri])
 
@@ -77,10 +72,10 @@ def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
         idx += 1
 
     if len(all_points) == 0 or len(all_tris) == 0:
-        return None, [], {}
+        return None, [], []
 
     subdivided_mesh = Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
-    return subdivided_mesh, full_face_meshes, face_to_points
+    return subdivided_mesh, full_face_meshes, all_tris
 
 # ---------------- Subdivision ----------------
 def subdivide_mesh(mesh, levels=1):
@@ -121,43 +116,40 @@ def subdivide_mesh(mesh, levels=1):
 # ---------------- Visualization ----------------
 def visualize_labels(step_file, labels_file):
     # Load JSON labels
-    try:
-        with open(labels_file) as f:
-            all_labels = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"{labels_file} not found!")
+    with open(labels_file) as f:
+        all_labels = json.load(f)
 
     labels_for_file = all_labels.get(step_file)
     if labels_for_file is None:
         print(f"No labels found for {step_file}. Showing all gray.")
-        labels_for_file = {"clamp_labels": [], "support_labels": [], "subdivide_levels": 0}
+        labels_for_file = {"clamp_tris": [], "support_faces": [], "subdivide_levels": 0}
 
+    clamp_tris = labels_for_file.get("clamp_tris", [])
+    support_faces = labels_for_file.get("support_faces", [])
     subdivide_levels = labels_for_file.get("subdivide_levels", 0)
-    clamp_points = labels_for_file.get("clamp_labels", [])
-    support_points = labels_for_file.get("support_labels", [])
 
     # Read STEP and generate mesh
     shape = read_step_file(step_file)
-    subdivided_mesh, full_face_meshes, face_to_points = mesh_faces(shape)
-    if subdivided_mesh is None:
-        raise ValueError("Could not generate mesh from STEP file.")
+    subdivided_mesh, full_face_meshes, _ = mesh_faces(shape)
 
-    # Apply same subdivision as used in labeler
     if subdivide_levels > 0:
         subdivided_mesh = subdivide_mesh(subdivided_mesh, levels=subdivide_levels)
 
     # ---------------- Apply colors ----------------
-    # Clamp: subdivided mesh
     tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
     face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
-    for i, tri in enumerate(tris):
-        if any(idx < len(clamp_points) and clamp_points[idx] == 1 for idx in tri):
-            face_colors[i] = [255, 0, 0]
+
+    # Clamp triangles
+    for t_idx in clamp_tris:
+        t_idx = int(t_idx)
+        if t_idx < len(tris):
+            face_colors[t_idx] = [255, 0, 0]
     subdivided_mesh.cellcolors = face_colors
 
-    # Support: full faces
+    # Support faces
     for fm in full_face_meshes:
-        if fm.user_data < len(support_points) and support_points[fm.user_data] == 1:
+        f_idx = int(fm.user_data)
+        if f_idx in support_faces:
             fm.c("blue")
         else:
             fm.c("lightgray")
