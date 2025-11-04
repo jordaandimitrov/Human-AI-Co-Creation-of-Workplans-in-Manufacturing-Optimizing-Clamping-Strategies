@@ -242,4 +242,4 @@ def interactive_labeling(save_json="labels.json", subdivide_levels=1, initial_br
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
-    interactive_labeling("labels.json", subdivide_levels=5, initial_brush=5.0)
+    interactive_labeling("labels.json", subdivide_levels=2, initial_brush=5.0)
