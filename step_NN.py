@@ -247,13 +247,15 @@ class TriangleDataset(Dataset):
 # ============================================================
 
 class ClampSupportNet(nn.Module):
-    def __init__(self,in_dim=20,hidden_dim=64,out_dim=2):
+    def __init__(self,in_dim=20,hidden_dim=128,out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim,hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(hidden_dim,hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(hidden_dim,out_dim)
         )
 
@@ -264,29 +266,54 @@ class ClampSupportNet(nn.Module):
 # STEP 4: Training
 # ============================================================
 
-def train_model_triangles(model,dataloader,epochs=50,lr=1e-3,device=None):
+def train_model_triangles(model, dataloader, epochs=3, lr=1e-3, lambda_normal=0, device=None):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.BCEWithLogitsLoss()
+
     for epoch in range(epochs):
         model.train()
-        total_loss=0.0
-        batches=0
-        for X,y in dataloader:
-            if X.dim()==3 and X.shape[0]==1:
+        total_loss = 0.0
+        batches = 0
+
+        for X, y in dataloader:
+            if X.dim() == 3 and X.shape[0] == 1:
                 X = X.squeeze(0)
                 y = y.squeeze(0)
-            X,y = X.to(device), y.to(device)
+            X, y = X.to(device), y.to(device)
             optimizer.zero_grad()
+
             logits = model(X)
-            loss = criterion(logits,y)
+            probs = torch.sigmoid(logits)
+
+            # --- Normal constraint calculation ---
+            # Extract normals (cols 3:6) and areas (col 0)
+            normals = X[:, 3:6]
+            normals = normals / (torch.norm(normals, dim=1, keepdim=True) + 1e-9)
+            areas = X[:, 0]
+
+            # Weighted sum of normals using predicted clamp and support
+            # (you can choose one or both outputs to constrain)
+            weights = probs[:, 0]  # e.g. clamp probability
+            total_normal = torch.sum(areas.unsqueeze(1) * normals * weights.unsqueeze(1), dim=0)
+            loss_normal = torch.norm(total_normal, p=2)  # L2 magnitude
+
+            # --- Combine with BCE loss ---
+            loss_bce = criterion(logits, y)
+            loss = loss_bce + lambda_normal * loss_normal
+
             loss.backward()
             optimizer.step()
+
             total_loss += loss.item()
-            batches +=1
-        print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss/max(1,batches):.4f}")
+            batches += 1
+
+        avg_loss = total_loss / max(1, batches)
+        print(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}")
+
     return model
+
 
 # ============================================================
 # STEP 5: Prediction
@@ -396,7 +423,7 @@ if __name__=="__main__":
             try: model.load_state_dict(torch.load(model_path)); print("Loaded existing weights.")
             except: pass
         print("🚀 Training model...")
-        trained_model=train_model_triangles(model,dataloader,epochs=10,lr=1e-3)
+        trained_model=train_model_triangles(model,dataloader,epochs=5,lr=1e-3)
         torch.save(trained_model.state_dict(),model_path)
         torch.save(trained_model.state_dict(),f"clamp_support_model_{datetime.now():%Y%m%d_%H%M}.pth")
         print(f"✅ Model saved to {model_path}")
