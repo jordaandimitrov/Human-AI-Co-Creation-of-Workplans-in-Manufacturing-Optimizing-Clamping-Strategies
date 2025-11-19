@@ -3,170 +3,92 @@ from tkinter.filedialog import askopenfilename
 import json
 import numpy as np
 from vedo import Mesh, Plotter
-from OCC.Core.STEPControl import STEPControl_Reader
-from OCC.Core.IFSelect import IFSelect_RetDone
-from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
-from OCC.Core.BRep import BRep_Tool
-from OCC.Core.TopExp import TopExp_Explorer
-from OCC.Core.TopAbs import TopAbs_FACE
-from OCC.Core.TopoDS import topods
+import os
 
-# ---------------- STEP file reading ----------------
-def read_step_file(filename):
-    reader = STEPControl_Reader()
-    status = reader.ReadFile(filename)
-    if status != IFSelect_RetDone:
-        raise ValueError("Error reading STEP file")
-    reader.TransferRoots()
-    return reader.OneShape()
 
-# ---------------- Mesh generation ----------------
-def mesh_faces(shape, linear_deflection=0.05, angular_deflection=0.5):
-    BRepMesh_IncrementalMesh(shape, linear_deflection, False, angular_deflection, True)
-
-    all_points = []
-    all_tris = []
-    point_map = {}
-    current_index = 0
-    full_face_meshes = []
-
-    exp = TopExp_Explorer(shape, TopAbs_FACE)
-    idx = 0
-    while exp.More():
-        face = topods.Face(exp.Current())
-        triangulation = BRep_Tool.Triangulation(face, face.Location())
-        if triangulation is None:
-            exp.Next()
-            idx += 1
-            continue
-
-        n_nodes = triangulation.NbNodes()
-        nodes = np.array([[triangulation.Node(i).X(),
-                           triangulation.Node(i).Y(),
-                           triangulation.Node(i).Z()] for i in range(1, n_nodes + 1)])
-        n_tris = triangulation.NbTriangles()
-        tris = np.array([[triangulation.Triangle(i).Value(1)-1,
-                          triangulation.Triangle(i).Value(2)-1,
-                          triangulation.Triangle(i).Value(3)-1] for i in range(1, n_tris+1)])
-
-        # Map points globally
-        face_point_set = set()
-        for i, p in enumerate(nodes):
-            key = tuple(np.round(p, 6))
-            if key not in point_map:
-                point_map[key] = current_index
-                all_points.append(p)
-                current_index += 1
-            face_point_set.add(point_map[key])
-
-        # Full face mesh
-        full_mesh = Mesh([nodes, tris], c="lightgray", alpha=0.5)
-        full_mesh.user_data = idx
-        full_face_meshes.append(full_mesh)
-
-        # Triangles in main mesh
-        for tri in tris:
-            all_tris.append([point_map[tuple(np.round(nodes[i], 6))] for i in tri])
-
-        exp.Next()
-        idx += 1
-
-    if len(all_points) == 0 or len(all_tris) == 0:
-        return None, [], []
-
-    subdivided_mesh = Mesh([np.array(all_points), np.array(all_tris)], c="lightgray", alpha=0.7)
-    return subdivided_mesh, full_face_meshes, all_tris
-
-# ---------------- Subdivision ----------------
-def subdivide_mesh(mesh, levels=1):
-    points = mesh.points
-    tris = np.array(mesh.cells).reshape(-1, 3)
-
-    for _ in range(levels):
-        new_tris = []
-        new_points = points.tolist()
-        midpoint_map = {}
-
-        def get_midpoint(i, j):
-            key = tuple(sorted([i, j]))
-            if key in midpoint_map:
-                return midpoint_map[key]
-            m = (points[i] + points[j]) / 2
-            new_points.append(m)
-            idx = len(new_points) - 1
-            midpoint_map[key] = idx
-            return idx
-
-        for tri in tris:
-            v0, v1, v2 = tri
-            m01 = get_midpoint(v0, v1)
-            m12 = get_midpoint(v1, v2)
-            m20 = get_midpoint(v2, v0)
-            new_tris.extend([
-                [v0, m01, m20],
-                [v1, m12, m01],
-                [v2, m20, m12],
-                [m01, m12, m20]
-            ])
-        points = np.array(new_points)
-        tris = np.array(new_tris)
-
-    return Mesh([points, tris], c=mesh.c(), alpha=mesh.alpha())
+# --- OCC/STEP/Subdivision libraries and functions are REMOVED ---
 
 # ---------------- Visualization ----------------
-def visualize_labels(step_file, labels_file):
-    # Load JSON labels
-    with open(labels_file) as f:
-        all_labels = json.load(f)
+def visualize_labels(stl_file, all_labels_data):
+    """
+    Loads an STL mesh, retrieves its corresponding labels from the JSON data,
+    and colors the mesh based on the 'clamp'/'unselected' labels.
+    """
 
-    labels_for_file = all_labels.get(step_file)
-    if labels_for_file is None:
-        print(f"No labels found for {step_file}. Showing all gray.")
-        labels_for_file = {"clamp_tris": [], "support_faces": [], "subdivide_levels": 0}
+    # 1. Determine the part name key
+    part_filename = os.path.basename(stl_file)
+    # Key is 'part_000' if the file is 'part_000.stl'
+    part_name_key = os.path.splitext(part_filename)[0]
 
-    clamp_tris = labels_for_file.get("clamp_tris", [])
-    support_faces = labels_for_file.get("support_faces", [])
-    subdivide_levels = labels_for_file.get("subdivide_levels", 0)
+    labels_for_part = all_labels_data.get(part_name_key)
 
-    # Read STEP and generate mesh
-    shape = read_step_file(step_file)
-    subdivided_mesh, full_face_meshes, _ = mesh_faces(shape)
+    if labels_for_part is None:
+        print(f"No labels found for key '{part_name_key}' in the JSON data. Showing mesh gray.")
+        # If no specific labels, we treat the object as having no labeled faces
+        labels_for_part = {}
 
-    if subdivide_levels > 0:
-        subdivided_mesh = subdivide_mesh(subdivided_mesh, levels=subdivide_levels)
+    # 2. Read STL and load mesh
+    try:
+        mesh = Mesh(stl_file)
+    except Exception as e:
+        raise RuntimeError(f"Error loading STL file: {e}")
 
-    # ---------------- Apply colors ----------------
-    tris = np.array(subdivided_mesh.cells).reshape(-1, 3)
-    face_colors = np.full((len(tris), 3), 200, dtype=np.uint8)
+    tris = np.array(mesh.cells).reshape(-1, 3)
+    num_faces = len(tris)
 
-    # Clamp triangles
-    for t_idx in clamp_tris:
-        t_idx = int(t_idx)
-        if t_idx < len(tris):
-            face_colors[t_idx] = [255, 0, 0]
-    subdivided_mesh.cellcolors = face_colors
+    # Initialize all faces to default gray
+    face_colors = np.full((num_faces, 3), 200, dtype=np.uint8)
 
-    # Support faces
-    for fm in full_face_meshes:
-        f_idx = int(fm.user_data)
-        if f_idx in support_faces:
-            fm.c("blue")
-        else:
-            fm.c("lightgray")
+    # 3. Apply colors based on JSON data
+    labeled_count = 0
+    for t_idx_str, label in labels_for_part.items():
+        try:
+            t_idx = int(t_idx_str)
+        except ValueError:
+            continue  # Skip non-integer keys
 
-    # ---------------- Show mesh ----------------
-    pl = Plotter(title="Selected Patches Viewer")
-    pl.add(subdivided_mesh)
-    for fm in full_face_meshes:
-        pl.add(fm)
+        if t_idx < num_faces:
+            if label == "clamp":
+                face_colors[t_idx] = [255, 0, 0]  # Red for "clamp"
+                labeled_count += 1
+            # Note: We skip the "unselected" label as faces are already gray
+
+    mesh.cellcolors = face_colors
+
+    print(f"Mesh loaded with {num_faces} faces. {labeled_count} faces colored red ('clamp').")
+
+    # 4. Show mesh
+    pl = Plotter(title=f"Label Viewer: {part_name_key}")
+    # Add the single colored mesh to the plotter
+    pl.add(mesh)
+
     pl.show(interactive=True, axes=1, viewup="z", resetcam=True)
+
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
     Tk().withdraw()
-    step_file = askopenfilename(title="Select STEP file", filetypes=[("STEP files","*.stp;*.step")])
-    if not step_file:
-        raise ValueError("No STEP file selected!")
 
-    labels_file = "labels.json"
-    visualize_labels(step_file, labels_file)
+    # 1. Select the STL file to view
+    stl_file = askopenfilename(
+        title="Select STL file to view",
+        filetypes=[("STL files", "*.stl")]
+    )
+    if not stl_file:
+        raise ValueError("No STL file selected!")
+
+    # 2. Select the single master JSON file
+    labels_file = askopenfilename(
+        title="Select Master JSON Labels file",
+        filetypes=[("JSON files", "*.json")]
+    )
+    if not labels_file:
+        raise ValueError("No JSON labels file selected!")
+
+    # 3. Load ALL labels from the master JSON file
+    with open(labels_file) as f:
+        all_labels_data = json.load(f)
+
+    # 4. Visualize
+    # Pass the selected STL file path and the entire loaded JSON data
+    visualize_labels(stl_file, all_labels_data)
