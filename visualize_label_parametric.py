@@ -7,8 +7,8 @@ import os
 # --------------------------------------------------------
 # PARAMETERS
 # --------------------------------------------------------
-# This is the 10 units (10cm) used for the clamping region threshold.
-Z_CLAMP_HEIGHT = 10
+# NEW VALUE: Now set to 15.0 units (15cm) for the bottom clamping region.
+Z_CLAMP_HEIGHT = 15.0
 # Tolerance for the Y-Boundary check. Adjust based on expected wall thickness.
 Y_TOLERANCE = 2.0
 
@@ -44,22 +44,22 @@ def filter_outside_faces(mesh):
 def color_faces_geometrically(mesh, outside_indices):
     """
     Colors the faces based on three combined geometric rules:
-    1. Z-Position (Clamping Region: 10cm on top AND 10cm on bottom)
+    1. Z-Position (Clamping Region: ONLY the lowest 15cm)
     2. Y-Orientation (Normal Dominance)
     3. Y-Boundary Check (Excluding internal slot walls)
     4. Visibility (Ray Casting result from outside_indices)
     """
 
     # --- Parameters ---
-    Z_CLAMP_HEIGHT = 10
-    Y_TOLERANCE = 2.0
+    # Fetch global Z_CLAMP_HEIGHT (now 15.0) and Y_TOLERANCE (2.0)
+    global Z_CLAMP_HEIGHT, Y_TOLERANCE
 
     # 1. Setup Coordinates and Thresholds
     min_z, max_z = get_z_bounds(mesh)
 
-    # Define the two threshold boundaries:
+    # Define the single threshold boundary:
+    # We only care about the BOTTOM region: from min_z up to min_z + Z_CLAMP_HEIGHT (15.0)
     Z_THRESHOLD_BOTTOM = min_z + Z_CLAMP_HEIGHT
-    Z_THRESHOLD_TOP = max_z - Z_CLAMP_HEIGHT
 
     num_faces = mesh.ncells
     face_colors = np.full((num_faces, 3), 200, dtype=np.uint8)
@@ -74,19 +74,15 @@ def color_faces_geometrically(mesh, outside_indices):
     y_normal_indices = np.where(y_dominant_mask)[0].astype(int)
     print(f"Filter A (Y-Normal Dominance): {len(y_normal_indices)} faces remain.")
 
-    # --- Filter B (Z-Position: Bottom OR Top Clamp Region) ---
+    # --- Filter B (Z-Position: Only Bottom 15cm Region) ---
 
-    # Condition 1: Centroid is in the bottom region (Z <= Z_THRESHOLD_BOTTOM)
-    cond_bottom = (centroid_zs <= Z_THRESHOLD_BOTTOM)
+    # Condition: Centroid is in the bottom region (Z <= Z_THRESHOLD_BOTTOM)
+    clamp_z_mask = (centroid_zs <= Z_THRESHOLD_BOTTOM)
 
-    # Condition 2: Centroid is in the top region (Z >= Z_THRESHOLD_TOP)
-    cond_top = (centroid_zs >= Z_THRESHOLD_TOP)
-
-    # Combine the conditions using logical OR
-    clamp_z_mask = cond_bottom | cond_top
     clamp_z_indices = np.where(clamp_z_mask)[0].astype(int)
 
-    print(f"Filter B (Z-Clamp Position: Top AND Bottom 10cm): {len(clamp_z_indices)} faces remain.")
+    # --- PRINTING CHANGE ---
+    print(f"Filter B (Z-Clamp Position: ONLY Bottom 15cm): {len(clamp_z_indices)} faces remain.")
 
     # Intersection 1: Z-Clamp and Y-Normal
     yz_intersection = np.intersect1d(clamp_z_indices, y_normal_indices).astype(int)
@@ -94,7 +90,7 @@ def color_faces_geometrically(mesh, outside_indices):
 
     # --- Filter C (Y-Boundary Check to exclude slots) ---
 
-    # 1. Get the global bounding box Y extremes (Index 2 is Ymin, Index 3 is Ymax)
+    # 1. Get the global bounding box Y extremes
     bounds = mesh.bounds()
     min_y = bounds[2]
     max_y = bounds[3]
@@ -103,10 +99,7 @@ def color_faces_geometrically(mesh, outside_indices):
     filtered_centroids = centroids[yz_intersection]
 
     # 3. Create a mask to identify faces near the ABSOLUTE Front or Back boundary:
-    # Condition 1: Near Max Y boundary (Front)
     cond1 = (filtered_centroids[:, 1] >= max_y - Y_TOLERANCE)
-
-    # Condition 2: Near Min Y boundary (Back)
     cond2 = (filtered_centroids[:, 1] <= min_y + Y_TOLERANCE)
 
     boundary_mask = cond1 | cond2
@@ -133,6 +126,9 @@ def color_faces_geometrically(mesh, outside_indices):
 
 
 if __name__ == "__main__":
+    # Note: We must ensure Z_CLAMP_HEIGHT is set to the desired value here
+    Z_CLAMP_HEIGHT = 15.0
+
     Tk().withdraw()
 
     # Allow selection of multiple files (e.g., 10 files)
@@ -144,7 +140,6 @@ if __name__ == "__main__":
 
     # 1. Initialize the Plotter for multiple sub-windows
     num_files = len(stl_files)
-    # Determine a decent grid shape (e.g., 2 rows, ceil(N/2) cols)
     n_rows = 2
     n_cols = int(np.ceil(num_files / n_rows))
 
@@ -152,14 +147,14 @@ if __name__ == "__main__":
 
     # 2. Loop through the files and render each one
     for i, stl_file in enumerate(stl_files):
-        # Set the current subplot cell for drawing
         VP.at(i).camera.Elevation(5)
 
-        # Load the mesh
         mesh = Mesh(stl_file)
 
         # --- Apply Filters and Coloring ---
         outside_indices = filter_outside_faces(mesh)
+
+        # Note: color_faces_geometrically now uses the updated global Z_CLAMP_HEIGHT (15.0)
         labeled_mesh = color_faces_geometrically(mesh, outside_indices)
 
         # Add a title to the subplot
@@ -168,8 +163,8 @@ if __name__ == "__main__":
         # 3. Render the mesh in the current cell
         VP.show(labeled_mesh,
                 title=f"Part {i}: {part_filename}",
-                axes=0,  # Use axes=0 for clean subplots
-                interactive=False)  # Don't pause after each plot
+                axes=0,
+                interactive=False)
 
     # 4. Display the entire Plotter window
     VP.interactive()
