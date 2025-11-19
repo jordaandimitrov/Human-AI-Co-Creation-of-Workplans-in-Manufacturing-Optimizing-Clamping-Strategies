@@ -3,7 +3,7 @@ from tkinter.filedialog import askopenfilenames, asksaveasfilename
 import numpy as np
 from vedo import Mesh, Plotter
 import os
-import json  # Essential for JSON handling
+import json
 
 # --------------------------------------------------------
 # PARAMETERS
@@ -62,7 +62,9 @@ def color_faces_geometrically(mesh, outside_indices):
     """
     Calculates and returns the colored mesh and the final labeled indices.
     """
-    global Z_CLAMP_HEIGHT, Y_TOLERANCE
+    # --- Parameters ---
+    # The parameters are defined globally but can be used locally here:
+    global Z_CLAMP_HEIGHT, Y_TOLERANCE # Keep global declarations for safety if parameters change
 
     # 1. Setup Coordinates and Thresholds
     min_z, max_z = get_z_bounds(mesh)
@@ -95,11 +97,17 @@ def color_faces_geometrically(mesh, outside_indices):
     min_y = bounds[2]
     max_y = bounds[3]
 
+    # 2. Get Centroids ONLY for the faces that passed the YZ filter
     filtered_centroids = centroids[yz_intersection]
+
+    # 3. Create a mask to identify faces near the ABSOLUTE Front or Back boundary:
+    # **FIX APPLIED HERE:** Y_TOLERANCE is now accessible
     cond1 = (filtered_centroids[:, 1] >= max_y - Y_TOLERANCE)
     cond2 = (filtered_centroids[:, 1] <= min_y + Y_TOLERANCE)
+
     boundary_mask = cond1 | cond2
 
+    # Get the indices of the faces that are on the main Y-boundary
     outward_indices = yz_intersection[np.where(boundary_mask)[0]].astype(int)
     print(f"Filter C (Y-Boundary Check): {len(outward_indices)} faces remain.")
 
@@ -131,7 +139,7 @@ if __name__ == "__main__":
 
     # --- 1. Master Dictionary Initialization ---
     all_labels_data = {}
-    output_dir = os.path.dirname(stl_files[0])  # Use the directory of the first selected file
+    output_dir = os.path.dirname(stl_files[0])
 
     # Prompt user for the final JSON filename
     output_json_path = asksaveasfilename(
@@ -162,17 +170,17 @@ if __name__ == "__main__":
         outside_indices = filter_outside_faces(mesh)
         labeled_mesh, final_indices = color_faces_geometrically(mesh, outside_indices)
 
-        # Extract part name (e.g., 'part_000')
-        part_filename_base = os.path.splitext(os.path.basename(stl_file))[0]
+        # FIX: Use the full, normalized file path as the dictionary key
+        json_key = os.path.normpath(stl_file).replace('\\', '/')
 
-        # --- 3. Generate Labels Dictionary and Add to Master Dictionary ---
+        # 3. Generate Labels Dictionary and Add to Master Dictionary
         labels_dict = generate_labels_dict(labeled_mesh, final_indices)
-        all_labels_data[part_filename_base] = labels_dict
-        print(f"Accumulated labels for {part_filename_base}.")
+        all_labels_data[json_key] = labels_dict
+        print(f"Accumulated labels for {json_key}.")
 
         # 4. Render the mesh
         VP.show(labeled_mesh,
-                title=f"Part {i}: {part_filename_base}",
+                title=f"Part {i}: {os.path.basename(stl_file)}",
                 axes=0,
                 interactive=False)
 
