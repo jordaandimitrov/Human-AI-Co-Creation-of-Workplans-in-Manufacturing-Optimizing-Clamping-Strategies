@@ -28,61 +28,87 @@ from vedo import Mesh, Plotter, color_map, Text2D
 # ============================================================
 
 def extract_triangle_features_stl(stl_file_path):
-    """
-    Extracts triangle features directly from a loaded STL mesh using Vedo/NumPy.
-    """
-
     # 1. Load Mesh
     mesh = Mesh(stl_file_path)
     mesh.triangulate()
 
     points = mesh.points
+    tris = np.array(mesh.cells).astype(np.int64)
 
-    # Mesh Cell/Triangle extraction
-    tris = np.array(mesh.cells).astype(np.int64)  # Triangles (faces)
-
-    # 2. Compute basic features
+    # 2. Get Basic Vectors
     normals = mesh.cell_normals
     centroids = mesh.cell_centers().points
     areas = mesh.area()
 
-    # --- FIX APPLIED HERE: Use the direct mesh.center_of_mass() method ---
-    # This method returns a list/array of coordinates, bypassing the dictionary access error.
+    # 3. Calculate Relative Features
+
+    # A. Center of Mass & Distance
     part_center = np.array(mesh.center_of_mass(), dtype=np.float32)
-    # ---------------------------------------------------------------------
+    dist_to_center = np.linalg.norm(centroids - part_center, axis=1)
 
-    dist_center = np.linalg.norm(centroids - part_center, axis=1)  # N x 1
+    # B. Radial Distance (XY plane)
+    rel_pos = centroids - part_center
+    radial_dist = np.linalg.norm(rel_pos[:, 0:2], axis=1)
 
-    # Initialize feature matrix
+    # C. Relative Z-Height (0.0 to 1.0)
+    z_values = centroids[:, 2]
+    min_z = np.min(z_values)
+    max_z = np.max(z_values)
+    height_range = max_z - min_z if (max_z - min_z) > 1e-6 else 1.0
+    rel_height = (z_values - min_z) / height_range
+
+    # D. Edge Lengths
+    v0 = points[tris[:, 0]]
+    v1 = points[tris[:, 1]]
+    v2 = points[tris[:, 2]]
+    edge_a = np.linalg.norm(v1 - v0, axis=1)
+    edge_b = np.linalg.norm(v2 - v1, axis=1)
+    edge_c = np.linalg.norm(v0 - v2, axis=1)
+
+    # ==========================================
+    # STEP 4: NORMALIZE SCALAR FEATURES (THE FIX)
+    # ==========================================
+    # We divide by the maximum value found in the part to keep inputs between 0.0 and 1.0
+
+    # Normalize Area
+    max_area = np.max(areas) if np.max(areas) > 1e-6 else 1.0
+    areas_norm = areas / max_area
+
+    # Normalize Distances (Use the max distance found in the part)
+    max_dist = np.max(dist_to_center) if np.max(dist_to_center) > 1e-6 else 1.0
+    dist_norm = dist_to_center / max_dist
+
+    # Normalize Radial Distance
+    max_rad = np.max(radial_dist) if np.max(radial_dist) > 1e-6 else 1.0
+    rad_norm = radial_dist / max_rad
+
+    # Normalize Edge Lengths (Use max edge found in part)
+    # We find the max of all edges combined to maintain relative proportions
+    max_edge = np.max([np.max(edge_a), np.max(edge_b), np.max(edge_c)])
+    max_edge = max_edge if max_edge > 1e-6 else 1.0
+
+    edge_a_norm = edge_a / max_edge
+    edge_b_norm = edge_b / max_edge
+    edge_c_norm = edge_c / max_edge
+
+    # ==========================================
+    # STEP 5: Construct Feature Matrix
+    # ==========================================
+
     N_tris = len(tris)
-    feats = np.zeros((N_tris, 23), dtype=np.float32)
+    feats = np.zeros((N_tris, 11), dtype=np.float32)
 
-    # 3. Populate features (23-dimension vector)
-
-    # --- Core Geometrical Features ---
-    feats[:, 0] = areas  # Area (1)
-    feats[:, 1] = 1.0  # Perimeter (Placeholder)
-    feats[:, 2] = 1.0  # Aspect Ratio (Placeholder)
-
-    # Normal Vector
-    feats[:, 3:6] = normals
-
-    # Centroid
-    feats[:, 6:9] = centroids
-
-    # Distance to Part Center
-    feats[:, 9] = dist_center
-
-    # --- Vertex Coordinates ---
-    feats[:, 14:17] = points[tris[:, 0]]  # Vertex A
-    feats[:, 17:20] = points[tris[:, 1]]  # Vertex B
-    feats[:, 20:23] = points[tris[:, 2]]  # Vertex C
-
-    # --- Neighbor/Topology Info (Placeholders) ---
-    feats[:, 10:14] = 0.0
+    feats[:, 0] = areas_norm  # Normalized
+    feats[:, 1] = 1.0  # Placeholder (Bias trick)
+    feats[:, 2:5] = normals  # Already -1 to 1 (No change needed)
+    feats[:, 5] = dist_norm  # Normalized
+    feats[:, 6] = rad_norm  # Normalized
+    feats[:, 7] = rel_height  # Already Normalized
+    feats[:, 8] = edge_a_norm  # Normalized
+    feats[:, 9] = edge_b_norm  # Normalized
+    feats[:, 10] = edge_c_norm  # Normalized
 
     return feats, tris, points
-
 # ============================================================
 # STEP 2: Dataset
 # ============================================================
@@ -108,27 +134,28 @@ class TriangleDataset(Dataset):
             raise IndexError("Triangle index out of range")
 
         n_tri = X.shape[0]
-        # Initialize labels: [clamp, support] (support is always zero now)
         tri_labels = np.zeros((n_tri, 2), dtype=np.float32)
-
-        # New JSON format uses {str(index): label_str}
-        clamp_indices = [int(idx) for idx, label in labels.items() if label == "clamp"]
-
+        clamp_indices = [int(i) for i, label in labels.items() if label == "clamp"]
         if clamp_indices:
-            tri_labels[clamp_indices, 0] = 1.0  # Set clamp label
+            tri_labels[clamp_indices, 0] = 1.0
 
-        if self.augment_rot and X.shape[1] >= 9:
-            # Augment rotation around Z-axis (cols 3:6=normal, cols 6:9=centroid)
+        # ROTATION AUGMENTATION
+        # We only need to rotate the Normal vectors (Indices 2,3,4 based on new function)
+        if self.augment_rot:
             angle = np.random.uniform(0, 2 * np.pi)
-            R = np.array([[np.cos(angle), -np.sin(angle), 0],
-                          [np.sin(angle), np.cos(angle), 0],
-                          [0, 0, 1]])
-            X[:, 3:6] = X[:, 3:6] @ R.T
-            X[:, 6:9] = X[:, 6:9] @ R.T
+            c, s = np.cos(angle), np.sin(angle)
+            R = np.array([[c, -s, 0],
+                          [s, c, 0],
+                          [0, 0, 1]], dtype=np.float32)
 
-        return torch.tensor(X, dtype=torch.float32), torch.tensor(
-            tri_labels, dtype=torch.float32
-        )
+            # Apply rotation only to Normal Vectors (Cols 2, 3, 4)
+            # Normals are vectors, so they rotate.
+            X[:, 2:5] = X[:, 2:5] @ R.T
+
+            # Note: We do NOT rotate cols 5-10 because they are
+            # distances/lengths (scalars) which are invariant to rotation.
+
+        return torch.tensor(X, dtype=torch.float32), torch.tensor(tri_labels, dtype=torch.float32)
 
 
 # ============================================================
@@ -372,7 +399,8 @@ if __name__ == "__main__":
     model_path = "clamp_support_model.pth"
     labels_path = r"training_set/all_part_labels.json"
 
-    model = ClampSupportNet(in_dim=23, hidden_dim=64, out_dim=2)
+    model = ClampSupportNet(in_dim=11, hidden_dim=64, out_dim=2)
+
 
     choice = input("Train new model (t) or load existing (l)? ").strip().lower()
 
@@ -389,7 +417,7 @@ if __name__ == "__main__":
             except:
                 pass
         print("🚀 Training model...")
-        trained_model = train_model_triangles(model, dataloader, epochs=2, lr=1e-3)
+        trained_model = train_model_triangles(model, dataloader, epochs=5, lr=1e-3)
         torch.save(trained_model.state_dict(), model_path)
         torch.save(trained_model.state_dict(), f"clamp_support_model_{datetime.now():%Y%m%d_%H%M}.pth")
         print(f"✅ Model saved to {model_path}")
