@@ -186,51 +186,85 @@ class ClampSupportNet(nn.Module):
 # STEP 4: Training (Unchanged)
 # ============================================================
 
-def train_model_triangles(model, dataloader, epochs=3, lr=1e-3, lambda_normal=0, device=None):
+# ============================================================
+# STEP 4: Training (Updated with Validation)
+# ============================================================
+
+def train_model_triangles(model, train_loader, val_loader, epochs=3, lr=1e-3, lambda_normal=0, device=None):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.BCEWithLogitsLoss()
 
     for epoch in range(epochs):
+        # --- TRAINING PHASE ---
         model.train()
-        total_loss = 0.0
-        batches = 0
+        train_loss = 0.0
+        train_batches = 0
 
-        for X, y in dataloader:
+        for X, y in train_loader:
             if X.dim() == 3 and X.shape[0] == 1:
                 X = X.squeeze(0)
                 y = y.squeeze(0)
             X, y = X.to(device), y.to(device)
-            optimizer.zero_grad()
 
+            optimizer.zero_grad()
             logits = model(X)
             probs = torch.sigmoid(logits)
 
-            # --- Normal constraint calculation ---
-            normals = X[:, 3:6]
+            # Normal constraint (Train)
+            normals = X[:, 2:5]  # Note: indices corrected to 2:5 based on your feature extraction
             normals = normals / (torch.norm(normals, dim=1, keepdim=True) + 1e-9)
             areas = X[:, 0]
-
             weights = probs[:, 0]
             total_normal = torch.sum(areas.unsqueeze(1) * normals * weights.unsqueeze(1), dim=0)
             loss_normal = torch.norm(total_normal, p=2)
 
-            # --- Combine with BCE loss ---
             loss_bce = criterion(logits, y)
             loss = loss_bce + lambda_normal * loss_normal
 
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-            batches += 1
+            train_loss += loss.item()
+            train_batches += 1
 
-        avg_loss = total_loss / max(1, batches)
-        print(f"Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f}")
+        avg_train_loss = train_loss / max(1, train_batches)
+
+        # --- VALIDATION PHASE ---
+        model.eval()  # Switch to evaluation mode
+        val_loss = 0.0
+        val_batches = 0
+
+        with torch.no_grad():  # Disable gradient calculation
+            for X, y in val_loader:
+                if X.dim() == 3 and X.shape[0] == 1:
+                    X = X.squeeze(0)
+                    y = y.squeeze(0)
+                X, y = X.to(device), y.to(device)
+
+                logits = model(X)
+                probs = torch.sigmoid(logits)
+
+                # Normal constraint (Val) - Must calculate same metric as train
+                normals = X[:, 2:5]
+                normals = normals / (torch.norm(normals, dim=1, keepdim=True) + 1e-9)
+                areas = X[:, 0]
+                weights = probs[:, 0]
+                total_normal = torch.sum(areas.unsqueeze(1) * normals * weights.unsqueeze(1), dim=0)
+                loss_normal = torch.norm(total_normal, p=2)
+
+                loss_bce = criterion(logits, y)
+                loss = loss_bce + lambda_normal * loss_normal
+
+                val_loss += loss.item()
+                val_batches += 1
+
+        avg_val_loss = val_loss / max(1, val_batches)
+
+        print(f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
 
     return model
-
 
 # ============================================================
 # STEP 5: Prediction (Unchanged)
@@ -394,13 +428,18 @@ def load_labeled_dataset(labels_file):
 # STEP 8: Main (ADAPTED FOR STL)
 # ============================================================
 
+# ============================================================
+# STEP 8: Main (Updated)
+# ============================================================
+
 if __name__ == "__main__":
-    #Tk().withdraw()
+    import random  # Needed for shuffling
+
+    # Tk().withdraw()
     model_path = "clamp_support_model.pth"
     labels_path = r"training_set/all_part_labels.json"
 
     model = ClampSupportNet(in_dim=11, hidden_dim=64, out_dim=2)
-
 
     choice = input("Train new model (t) or load existing (l)? ").strip().lower()
 
@@ -408,24 +447,46 @@ if __name__ == "__main__":
         print("🧠 Loading labeled dataset...")
         all_parts = load_labeled_dataset(labels_path)
         if not all_parts: raise ValueError("No labeled parts found!")
-        dataset = TriangleDataset(all_parts, augment_rot=True)
-        dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+
+        # --- NEW: Split into Train and Validation ---
+        random.shuffle(all_parts)  # Shuffle parts randomly
+        split_idx = int(len(all_parts) * 0.8)  # 80% Train, 20% Val
+
+        parts_train = all_parts[:split_idx]
+        parts_val = all_parts[split_idx:]
+
+        print(f"📊 Dataset split: {len(parts_train)} Training parts, {len(parts_val)} Validation parts.")
+
+        # Create Datasets
+        # Train gets rotation augmentation
+        train_dataset = TriangleDataset(parts_train, augment_rot=True)
+        # Validation gets NO augmentation (test on 'real' orientation)
+        val_dataset = TriangleDataset(parts_val, augment_rot=False)
+
+        # Create DataLoaders
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+
         if os.path.exists(model_path):
             try:
-                model.load_state_dict(torch.load(model_path));
-                print("Loaded existing weights.")
+                model.load_state_dict(torch.load(model_path))
+                print("Loaded existing weights to fine-tune.")
             except:
                 pass
+
         print("🚀 Training model...")
-        trained_model = train_model_triangles(model, dataloader, epochs=5, lr=1e-3)
+        # Pass both loaders to the function
+        trained_model = train_model_triangles(model, train_loader, val_loader, epochs=5, lr=1e-3)
+
         torch.save(trained_model.state_dict(), model_path)
         torch.save(trained_model.state_dict(), f"clamp_support_model_{datetime.now():%Y%m%d_%H%M}.pth")
         print(f"✅ Model saved to {model_path}")
     else:
         print("⚡ Loading pretrained model...")
-        model.load_state_dict(torch.load(model_path, 'cpu'))
+        model.load_state_dict(torch.load(model_path, map_location='cpu'))
         trained_model = model
 
+    # ... (Rest of your prediction/visualization code remains the same)
     while True:
         test_file_path = askopenfilename(title="Select STL file", filetypes=[("STL files", "*.stl")])
         if not test_file_path: break
