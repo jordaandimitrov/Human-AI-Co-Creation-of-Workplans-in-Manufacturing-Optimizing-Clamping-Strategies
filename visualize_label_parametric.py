@@ -9,7 +9,7 @@ import json
 # PARAMETERS
 # --------------------------------------------------------
 # This is the 15.0 units (15cm) used for the clamping region threshold.
-Z_CLAMP_HEIGHT = 15.0
+Z_CLAMP_HEIGHT = 25.0
 # Tolerance for the Y-Boundary check. Adjust based on expected wall thickness.
 Y_TOLERANCE = 2.0
 
@@ -128,7 +128,7 @@ def color_faces_geometrically(mesh, outside_indices):
 # --------------------------------------------------------
 
 if __name__ == "__main__":
-    Z_CLAMP_HEIGHT = 15.0
+
 
     Tk().withdraw()
 
@@ -139,15 +139,16 @@ if __name__ == "__main__":
 
     # --- 1. Master Dictionary Initialization ---
     all_labels_data = {}
-    output_dir = os.path.dirname(stl_files[0])
-
+    #output_dir = os.path.dirname(stl_files[0])
+    output_dir = "training_set"
     # Prompt user for the final JSON filename
-    output_json_path = asksaveasfilename(
-        defaultextension=".json",
-        initialdir=output_dir,
-        initialfile="all_part_labels.json",
-        title="Select location to save master JSON file"
-    )
+   # output_json_path = asksaveasfilename(
+    #    defaultextension=".json",
+    #    initialdir=output_dir,
+    #    initialfile="all_part_labels.json",
+    #    title="Select location to save master JSON file"
+    #)
+    output_json_path = r'training_set/all_part_labels.json'
 
     if not output_json_path:
         print("Saving cancelled. Exiting.")
@@ -171,7 +172,7 @@ if __name__ == "__main__":
         labeled_mesh, final_indices = color_faces_geometrically(mesh, outside_indices)
 
         # FIX: Use the full, normalized file path as the dictionary key
-        json_key = os.path.normpath(stl_file).replace('\\', '/')
+        json_key = 'training_set/' + os.path.basename(stl_file)
 
         # 3. Generate Labels Dictionary and Add to Master Dictionary
         labels_dict = generate_labels_dict(labeled_mesh, final_indices)

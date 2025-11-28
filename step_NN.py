@@ -136,10 +136,13 @@ class TriangleDataset(Dataset):
 # ============================================================
 
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=23, hidden_dim=128, out_dim=2):
+    def __init__(self, in_dim=23, hidden_dim=64, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(hidden_dim, hidden_dim),
@@ -232,60 +235,99 @@ def predict_best_triangles(model, features, top_k=5, zero_support=False):
 # STEP 6: Visualization (FIXED: Reliable Picking)
 # ============================================================
 
+# ============================================================
+# STEP 6: Visualization (FIXED: Robust Individual Triangle Actors)
+# ============================================================
+
 def visualize_triangles(points, tris, tri_probs):
-    # 1. Reconstruct the single mesh for coloring
-    mesh = Mesh([points, tris])
+    """
+    Visualizes the mesh by creating a separate actor for every triangle,
+    allowing for reliable index-based picking via actor properties.
+    """
 
-    # ... (Color generation and assignment logic remains the same) ...
-    if not np.any(tri_probs[:, 0] > 0):
-        mesh.c('gray')
-        colors_uint8 = np.full((mesh.ncells, 3), 200, dtype=np.uint8)
-    else:
-        colors_float = color_map(tri_probs[:, 0], name="jet", vmin=0, vmax=1)
-        colors_uint8 = (colors_float * 255).astype(np.uint8)
-        mesh.celldata["clamp_prob"] = tri_probs[:, 0]  # Store probabilities
+    # 1. Create a list of individual Mesh actors (one per triangle)
+    meshes = []
 
-    mesh.cellcolors = colors_uint8
+    # tri_probs[:, 0] is Clamp probability
+    # tri_probs[:, 1] is Support probability (often 0.0)
 
+    for i, t_indices in enumerate(tris):
+        # Create a new mesh actor for this single triangle
+        # Points: only the 3 vertices of this triangle
+        # Cells: [[0, 1, 2]] - indices of the 3 points
+        mesh = Mesh([points[t_indices], [[0, 1, 2]]])
+
+        # CRITICAL: Store the original triangle index on the mesh actor
+        mesh.tri_idx = i
+
+        meshes.append(mesh)
+
+    # 2. Setup Plotter and Controls
     plt = Plotter(title="Clamp/Support Triangles", bg="gray", axes=1)
+
+    # State tracking: 0=Clamp, 1=Support
+    view_mode = {"current": 0}
+
+    overlay = Text2D("Mode: Clamp", s=1.5)
     face_info = Text2D("", pos="top-right", c="white", s=1.2)
 
-    plt.add(mesh)
-    plt.add(face_info)
+    plt.add(overlay, face_info)  # Add text overlays
 
-    # 2. Define the callback function (FIXED for reliable click updates)
+    # 3. Define Callback Functions
+
+    def update_colors():
+        """Updates the color of all triangles based on the current view_mode."""
+        for i, m in enumerate(meshes):
+            # Get the probability for the current mode (Clamp or Support)
+            prob = tri_probs[i, view_mode["current"]]
+
+            # Color the individual mesh actor
+            m.c(color_map(prob, name="jet", vmin=0, vmax=1))
+
+        plt.render()
+
     def on_pick(event):
-        # We check if an actor was picked and if it's our mesh
-        if event.actor != mesh:
-            face_info.text("")
-            plt.render()
-            return
-
-        # The picked cell ID (index into the mesh.cells array) is the ID of the cell
-        # that was hit by the ray cast from the mouse position.
-        # Use event.id, which holds the index for the picked cell/point/vertex.
-        tri_idx = event.id
-
-        # Check for a valid cell hit (index >= 0)
-        if tri_idx is not None and tri_idx >= 0:
-
-            # Retrieve the probability stored in the mesh's cell data
-            prob = mesh.celldata["clamp_prob"][tri_idx]
+        """Executed when a mesh actor is clicked."""
+        # Check if the event picked an actor AND if that actor has the stored index
+        if event.actor and hasattr(event.actor, "tri_idx"):
+            idx = event.actor.tri_idx
+            prob = tri_probs[idx, view_mode["current"]]
+            label = "Clamp" if view_mode["current"] == 0 else "Support"
 
             # Update the text overlay
-            face_info.text(f"Triangle Index: {tri_idx}\nClamp Probability: {prob:.4f}")
+            face_info.text(f"Triangle {idx}\n{label}: {prob:.4f}")
             plt.render()
         else:
-            # Clear text if click missed the mesh
+            # Clear text if click missed a triangle
             face_info.text("")
             plt.render()
 
-    # 3. Register the callback
-    # We rely on the implicit setting of the Cell Picker when using event.actor
-    plt.add_callback("mouse click", on_pick)
+    def on_key(event):
+        """Executed on key press (C or U)."""
+        key = event.keypress.lower()
+        if key == "c":
+            view_mode["current"] = 0
+            overlay.text("Mode: Clamp")
+            update_colors()
+        elif key == "u":
+            view_mode["current"] = 1
+            overlay.text("Mode: Support")
+            update_colors()
 
-    plt.show(interactive=True)# STEP 7: Load labeled dataset (ADAPTED FOR STL/JSON)
-# ============================================================
+    # 4. Final Setup and Display
+
+    # Add all individual mesh actors to the plotter
+    for m in meshes:
+        plt.add(m)
+
+    # Register callbacks
+    plt.add_callback("mouse click", on_pick)
+    plt.add_callback("key press", on_key)
+
+    # Initial color update
+    update_colors()
+
+    plt.show(interactive=True)# ============================================================
 
 def load_labeled_dataset(labels_file):
     with open(labels_file) as f:
@@ -326,9 +368,9 @@ def load_labeled_dataset(labels_file):
 # ============================================================
 
 if __name__ == "__main__":
-    Tk().withdraw()
+    #Tk().withdraw()
     model_path = "clamp_support_model.pth"
-    labels_path = r"C:\Users\jorda\Desktop\Unif\MA3\Thesis\Git\Blender\generated_parts\generated_parts_slot\all_part_labels.json"
+    labels_path = r"training_set/all_part_labels.json"
 
     model = ClampSupportNet(in_dim=23, hidden_dim=64, out_dim=2)
 
@@ -347,13 +389,13 @@ if __name__ == "__main__":
             except:
                 pass
         print("🚀 Training model...")
-        trained_model = train_model_triangles(model, dataloader, epochs=5, lr=1e-3)
+        trained_model = train_model_triangles(model, dataloader, epochs=2, lr=1e-3)
         torch.save(trained_model.state_dict(), model_path)
         torch.save(trained_model.state_dict(), f"clamp_support_model_{datetime.now():%Y%m%d_%H%M}.pth")
         print(f"✅ Model saved to {model_path}")
     else:
         print("⚡ Loading pretrained model...")
-        model.load_state_dict(torch.load(model_path))
+        model.load_state_dict(torch.load(model_path, 'cpu'))
         trained_model = model
 
     while True:
