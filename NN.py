@@ -467,12 +467,12 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-        if os.path.exists(model_path):
-            try:
-                model.load_state_dict(torch.load(model_path))
-                print("Loaded existing weights to fine-tune.")
-            except:
-                pass
+       # if os.path.exists(model_path):
+        #    try:
+         #       model.load_state_dict(torch.load(model_path))
+          #      print("Loaded existing weights to fine-tune.")
+           # except:
+            #    pass
 
         print("🚀 Training model...")
         # Pass both loaders to the function
