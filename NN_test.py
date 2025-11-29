@@ -9,13 +9,16 @@ from vedo import Mesh, Plotter, color_map, Text2D
 
 # ============================================================
 # 1. MODEL ARCHITECTURE
-# (Must match the training script exactly)
+# (Updated to in_dim=12 to match the Cluster Model)
 # ============================================================
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=11, hidden_dim=64, out_dim=2):
+    def __init__(self, in_dim=12, hidden_dim=128, out_dim=2):  # <--- CHANGED TO 12
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(hidden_dim, hidden_dim),
@@ -32,33 +35,30 @@ class ClampSupportNet(nn.Module):
 
 
 # ============================================================
-# 2. FEATURE EXTRACTION
+# 2. FEATURE EXTRACTION (UPDATED WITH OUTERNESS)
 # ============================================================
 def extract_triangle_features_stl(stl_file_path):
-    print(f"Processing: {stl_file_path}...")
+    print(f"Processing: {os.path.basename(stl_file_path)}...")
 
-    # 1. Load Mesh
     mesh = Mesh(stl_file_path)
     mesh.triangulate()
 
     points = mesh.points
     tris = np.array(mesh.cells).astype(np.int64)
-
-    # 2. Get Basic Vectors
     normals = mesh.cell_normals
     centroids = mesh.cell_centers().points
     areas = mesh.area()
-
-    # 3. Calculate Relative Features
     part_center = np.array(mesh.center_of_mass(), dtype=np.float32)
     dist_to_center = np.linalg.norm(centroids - part_center, axis=1)
 
+    # ----------------------------
+    # BASIC FEATURES
+    # ----------------------------
     rel_pos = centroids - part_center
     radial_dist = np.linalg.norm(rel_pos[:, 0:2], axis=1)
 
     z_values = centroids[:, 2]
-    min_z = np.min(z_values)
-    max_z = np.max(z_values)
+    min_z, max_z = np.min(z_values), np.max(z_values)
     height_range = max_z - min_z if (max_z - min_z) > 1e-6 else 1.0
     rel_height = (z_values - min_z) / height_range
 
@@ -69,69 +69,117 @@ def extract_triangle_features_stl(stl_file_path):
     edge_b = np.linalg.norm(v2 - v1, axis=1)
     edge_c = np.linalg.norm(v0 - v2, axis=1)
 
-    # 4. Normalize
+    # ----------------------------
+    # OUTERNESS (Wall Proximity)
+    # ----------------------------
+    b = mesh.bounds()
+    dist_x = np.minimum(abs(centroids[:, 0] - b[0]), abs(centroids[:, 0] - b[1]))
+    dist_y = np.minimum(abs(centroids[:, 1] - b[2]), abs(centroids[:, 1] - b[3]))
+    dist_to_wall = np.minimum(dist_x, dist_y)
+    max_dim = max(b[1] - b[0], b[3] - b[2])
+    outerness = 1.0 - (dist_to_wall / (max_dim * 0.5 + 1e-6))
+    outerness = np.clip(outerness, 0, 1)
+
+    # ----------------------------
+    # SMART RAY (Opposite Face Check)
+    # ----------------------------
+    ray_directions = -normals
+    ray_ends = centroids + ray_directions * 500.0
+    opposite_quality = np.zeros(len(tris))
+
+    my_verticality = 1.0 - np.abs(normals[:, 2])
+    check_indices = np.where(my_verticality > 0.8)[0]
+
+    for idx in check_indices:
+        origin = centroids[idx]
+        target = ray_ends[idx]
+
+        hits = mesh.intersect_with_line(origin, target)
+
+        valid_hit = False
+        if len(hits) > 0:
+            for hit in hits:
+                if np.linalg.norm(hit - origin) < 1.0:
+                    continue
+                try:
+                    _, hit_idx = mesh.closest_point(hit, return_cell_id=True)
+                except:
+                    continue
+                if hit_idx >= 0 and hit_idx < len(normals):
+                    opp_normal = normals[hit_idx]
+                    alignment = np.dot(normals[idx], opp_normal)
+                    opp_verticality = 1.0 - abs(opp_normal[2])
+                    if alignment < -0.85 and opp_verticality > 0.85:
+                        valid_hit = True
+                        break
+
+        opposite_quality[idx] = 1.0 if valid_hit else 0.0
+
+    # ----------------------------
+    # NORMALIZATION (Same as training)
+    # ----------------------------
     max_area = np.max(areas) if np.max(areas) > 1e-6 else 1.0
-    areas_norm = areas / max_area
-
     max_dist = np.max(dist_to_center) if np.max(dist_to_center) > 1e-6 else 1.0
-    dist_norm = dist_to_center / max_dist
-
     max_rad = np.max(radial_dist) if np.max(radial_dist) > 1e-6 else 1.0
-    rad_norm = radial_dist / max_rad
-
-    max_edge = np.max([np.max(edge_a), np.max(edge_b), np.max(edge_c)])
+    max_edge = max(np.max(edge_a), np.max(edge_b), np.max(edge_c))
     max_edge = max_edge if max_edge > 1e-6 else 1.0
 
-    edge_a_norm = edge_a / max_edge
-    edge_b_norm = edge_b / max_edge
-    edge_c_norm = edge_c / max_edge
-
-    # 5. Construct Matrix
-    N_tris = len(tris)
-    feats = np.zeros((N_tris, 11), dtype=np.float32)
-
-    feats[:, 0] = areas_norm
-    feats[:, 1] = 1.0  # Bias placeholder
+    # ----------------------------
+    # FINAL 13-DIM FEATURE MATRIX
+    # ----------------------------
+    feats = np.zeros((len(tris), 13), dtype=np.float32)
+    feats[:, 0] = areas / max_area
+    feats[:, 1] = 1.0
     feats[:, 2:5] = normals
-    feats[:, 5] = dist_norm
-    feats[:, 6] = rad_norm
+    feats[:, 5] = dist_to_center / max_dist
+    feats[:, 6] = radial_dist / max_rad
     feats[:, 7] = rel_height
-    feats[:, 8] = edge_a_norm
-    feats[:, 9] = edge_b_norm
-    feats[:, 10] = edge_c_norm
+    feats[:, 8] = edge_a / max_edge
+    feats[:, 9] = edge_b / max_edge
+    feats[:, 10] = edge_c / max_edge
+    feats[:, 11] = outerness
+    feats[:, 12] = opposite_quality
 
     return feats, tris, points
 
 
+
 # ============================================================
-# 3. VISUALIZATION
+# 3. VISUALIZATION (With Threshold Filtering)
 # ============================================================
-def visualize_triangles(points, tris, tri_probs):
+def visualize_triangles(points, tris, tri_probs, threshold=0.90):
     """
-    Visualizes the mesh with interactive picking.
+    Visualizes the mesh using the High Pass Filter to hide 'Fake Clamps'
     """
-    print("Building visualization actors (this might take a moment for large meshes)...")
+    print(f"Building visualization (Hiding probabilities < {threshold:.2f})...")
 
     meshes = []
 
     # tri_probs[:, 0] is Clamp, tri_probs[:, 1] is Support
     for i, t_indices in enumerate(tris):
-        # Create actor for single triangle
         mesh = Mesh([points[t_indices], [[0, 1, 2]]])
-        mesh.tri_idx = i  # Store index
+        mesh.tri_idx = i
         meshes.append(mesh)
 
-    plt = Plotter(title="Inference Result", bg="gray", axes=1)
-    view_mode = {"current": 0}  # 0=Clamp, 1=Support
+    plt = Plotter(title=f"Strict Mode (Threshold > {threshold})", bg="gray", axes=1)
+    view_mode = {"current": 0}
 
-    overlay = Text2D("Mode: Clamp", s=1.5)
+    overlay = Text2D(f"Mode: Clamp (>{threshold})", s=1.5)
     face_info = Text2D("Click a face for info", pos="top-right", c="white", s=1.0)
     plt.add(overlay, face_info)
 
     def update_colors():
         for i, m in enumerate(meshes):
             prob = tri_probs[i, view_mode["current"]]
-            m.c(color_map(prob, name="jet", vmin=0, vmax=1))
+
+            # --- THE FILTER ---
+            if prob < threshold:
+                # Ghost out low confidence triangles
+                m.c("grey").alpha(0.2)
+            else:
+                # Highlight high confidence triangles
+                m.c("red").alpha(1.0)
+
         plt.render()
 
     def on_pick(event):
@@ -149,7 +197,7 @@ def visualize_triangles(points, tris, tri_probs):
         key = event.keypress.lower()
         if key == "c":
             view_mode["current"] = 0
-            overlay.text("Mode: Clamp")
+            overlay.text(f"Mode: Clamp (>{threshold})")
             update_colors()
         elif key == "u":
             view_mode["current"] = 1
@@ -167,14 +215,13 @@ def visualize_triangles(points, tris, tri_probs):
 
 
 # ============================================================
-# 4. MAIN EXECUTION (LOAD & PREDICT)
+# 4. MAIN EXECUTION
 # ============================================================
 if __name__ == "__main__":
-    # Remove hidden root window
     Tk().withdraw()
 
     # 1. Load Model Weights
-    print("Please select the trained model file (.pth)...")
+    print("Please select the 'separation_model_12dim.pth' file...")
     model_path = askopenfilename(filetypes=[("PyTorch Model", "*.pth")])
     if not model_path:
         print("No model selected. Exiting.")
@@ -191,16 +238,15 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Running inference on: {device}")
 
-    model = ClampSupportNet(in_dim=11, hidden_dim=64, out_dim=2)
+    # Note: Input Dimension is now 12
+    model = ClampSupportNet(in_dim=13, hidden_dim=128, out_dim=2)
 
-    # 4. Smart Load State Dict (Fix DDP prefixes)
+    # 4. Smart Load State Dict
     checkpoint = torch.load(model_path, map_location=device)
-
-    # Check if the keys start with 'module.' (artifact of DDP training)
     if list(checkpoint.keys())[0].startswith('module.'):
         new_state_dict = {}
         for k, v in checkpoint.items():
-            name = k[7:]  # remove `module.`
+            name = k[7:]
             new_state_dict[name] = v
         model.load_state_dict(new_state_dict)
     else:
@@ -209,11 +255,9 @@ if __name__ == "__main__":
     model.to(device)
     model.eval()
 
-    # 5. Extract Features
+    # 5. Extract Features & Predict
     try:
         features, tris, points = extract_triangle_features_stl(stl_path)
-
-        # 6. Run Prediction
         input_tensor = torch.tensor(features, dtype=torch.float32).to(device)
 
         with torch.no_grad():
@@ -222,8 +266,8 @@ if __name__ == "__main__":
 
         print("Prediction complete.")
 
-        # 7. Visualize
-        visualize_triangles(points, tris, probs)
+        # 6. Visualize with Threshold 0.90
+        visualize_triangles(points, tris, probs, threshold=0.90)
 
     except Exception as e:
         print(f"Error during processing: {e}")
