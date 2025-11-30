@@ -149,70 +149,55 @@ def extract_triangle_features_stl(stl_file_path):
 # ============================================================
 def visualize_triangles(points, tris, tri_probs, threshold=0.90):
     """
-    Visualizes the mesh using the High Pass Filter to hide 'Fake Clamps'
+    Visualizes results using a single Mesh object and Scalar Mapping.
     """
-    print(f"Building visualization (Hiding probabilities < {threshold:.2f})...")
+    print("Generating visualization mesh...")
 
-    meshes = []
+    # 1. Create one single mesh
+    mesh = Mesh([points, tris])
 
-    # tri_probs[:, 0] is Clamp, tri_probs[:, 1] is Support
-    for i, t_indices in enumerate(tris):
-        mesh = Mesh([points[t_indices], [[0, 1, 2]]])
-        mesh.tri_idx = i
-        meshes.append(mesh)
+    # 2. Prepare Scalar Data (The Probability of being a Clamp)
+    # tri_probs shape is (N, 2), we want class 0 (Clamp) or class 1?
+    # Based on your training script:
+    # y[clamp_indices, 0] = 1.0 -> Class 0 is Clamp.
+    clamp_probability = tri_probs[:, 0]
 
-    plt = Plotter(title=f"Strict Mode (Threshold > {threshold})", bg="gray", axes=1)
-    view_mode = {"current": 0}
+    # 3. Add this data to the mesh
+    mesh.celldata["Probability"] = clamp_probability
 
-    overlay = Text2D(f"Mode: Clamp (>{threshold})", s=1.5)
-    face_info = Text2D("Click a face for info", pos="top-right", c="white", s=1.0)
-    plt.add(overlay, face_info)
+    # 4. Create the Plotter
+    plt = Plotter(title="Inference Results", bg="white", axes=1)
 
-    def update_colors():
-        for i, m in enumerate(meshes):
-            prob = tri_probs[i, view_mode["current"]]
+    # 5. Define a custom coloring function
+    # We color based on threshold manually for crisp cut-off
+    def apply_threshold_color(thresh):
+        # Default Grey
+        colors = np.full((mesh.ncells, 4), [200, 200, 200, 50], dtype=np.uint8)  # RGBA
 
-            # --- THE FILTER ---
-            if prob < threshold:
-                # Ghost out low confidence triangles
-                m.c("grey").alpha(0.2)
-            else:
-                # Highlight high confidence triangles
-                m.c("red").alpha(1.0)
+        # High confidence Clamp -> Red
+        mask = clamp_probability > thresh
+        colors[mask] = [255, 0, 0, 255]  # Red, Opaque
 
-        plt.render()
+        mesh.cellcolors = colors
 
-    def on_pick(event):
-        if event.actor and hasattr(event.actor, "tri_idx"):
-            idx = event.actor.tri_idx
-            prob = tri_probs[idx, view_mode["current"]]
-            label = "Clamp" if view_mode["current"] == 0 else "Support"
-            face_info.text(f"Triangle {idx}\n{label}: {prob:.4f}")
-            plt.render()
-        else:
-            face_info.text("")
-            plt.render()
+    apply_threshold_color(threshold)
 
-    def on_key(event):
-        key = event.keypress.lower()
-        if key == "c":
-            view_mode["current"] = 0
-            overlay.text(f"Mode: Clamp (>{threshold})")
-            update_colors()
-        elif key == "u":
-            view_mode["current"] = 1
-            overlay.text("Mode: Support")
-            update_colors()
+    # 6. Interaction
+    instructions = Text2D(f"Threshold: {threshold}", pos="bottom-left")
+    plt.add(instructions)
 
-    for m in meshes:
-        plt.add(m)
+    def on_slider(widget, event):
+        val = widget.GetRepresentation().GetValue()
+        apply_threshold_color(val)
+        instructions.text(f"Threshold: {val:.2f}")
 
-    plt.add_callback("mouse click", on_pick)
-    plt.add_callback("key press", on_key)
-    update_colors()
-    print("Displaying... Press 'c' for Clamp, 'u' for Support.")
-    plt.show(interactive=True)
+    plt.add_slider(
+        on_slider,
+        xmin=0.0, xmax=1.0, value=threshold,
+        pos=[(0.1, 0.1), (0.4, 0.1)], title="Confidence"
+    )
 
+    plt.show(mesh, interactive=True)
 
 # ============================================================
 # 4. MAIN EXECUTION
