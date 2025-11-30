@@ -33,7 +33,7 @@ class ClampSupportNet(nn.Module):
 
 
 # ============================================================
-# 2. POST-PROCESSING (Region Growing)
+# 2. POST-PROCESSING
 # ============================================================
 def smart_expand_selection(initial_mask, prob_map, adjacency, normals, low_thresh=0.40):
     mask = initial_mask.copy()
@@ -63,9 +63,6 @@ def smart_expand_selection(initial_mask, prob_map, adjacency, normals, low_thres
 
 
 def filter_small_islands(mask, adjacency, face_areas, min_area=50.0):
-    """
-    Removes clusters smaller than min_area (mm^2).
-    """
     selected = np.where(mask)[0]
     if len(selected) == 0: return mask
 
@@ -92,37 +89,27 @@ def filter_small_islands(mask, adjacency, face_areas, min_area=50.0):
 
 
 # ============================================================
-# 3. ADVANCED CLAMP GENERATION (Z-Locked & Collinear)
+# 3. CLAMP GENERATION (With Alternative Solutions)
 # ============================================================
 def get_orientation_matrix(forward_vector):
-    """
-    Creates a 4x4 transform matrix where X-axis points along forward_vector
-    and Z-axis is forced UP (World Z).
-    """
     x_axis = forward_vector / (np.linalg.norm(forward_vector) + 1e-6)
     world_z = np.array([0.0, 0.0, 1.0])
-
-    # Sideways (Y) - Width of the jaw
     y_axis = np.cross(world_z, x_axis)
     if np.linalg.norm(y_axis) < 1e-3: y_axis = np.array([0.0, 1.0, 0.0])
     y_axis = y_axis / np.linalg.norm(y_axis)
-
-    # Up (Z) - Recalculated to ensure orthogonality
     z_axis = np.cross(x_axis, y_axis)
     z_axis = z_axis / np.linalg.norm(z_axis)
-
     R = np.array([x_axis, y_axis, z_axis]).T
     T = np.eye(4)
     T[:3, :3] = R
     return T
 
 
-def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset):
+def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pair_start_index=0):
     """
-    1. Finds Top 2 Patches by Area.
-    2. Calculates Squeeze Axis from Patch A Normal (Z-flattened).
-    3. Calculates Midpoint between patches.
-    4. Projects jaws onto the axis passing through Midpoint (Collinear Fix).
+    Identifies patches sorted by Area.
+    Picks the pair at [pair_start_index] (Tier 1, Tier 2...).
+    Uses Z-Locked Surface Normal logic for orientation.
     """
     selected_indices = np.where(mask)[0]
     if len(selected_indices) == 0: return []
@@ -136,7 +123,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset):
         G = nx.from_edgelist(subset_edges)
         G.add_nodes_from(selected_indices)
 
-        # Sort by Area
         components = list(nx.connected_components(G))
         comp_stats = []
         for comp in components:
@@ -144,71 +130,79 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset):
             total_area = np.sum(face_areas[idx_list])
             comp_stats.append((total_area, idx_list))
 
+        # Sort descending by AREA
         comp_stats.sort(key=lambda x: x[0], reverse=True)
         patches = [x[1] for x in comp_stats]
     else:
         patches = [selected_indices]
 
+    # --- VALIDATE INDEX ---
+    idx_A = pair_start_index
+    idx_B = pair_start_index + 1
+
+    if idx_A >= len(patches):
+        print(f"⚠️ No more solutions (Requested Patch #{idx_A}, Total {len(patches)}).")
+        return []
+
     centroids = mesh.cell_centers().points
     normals = mesh.cell_normals
 
-    # 2. Logic Branch (Dual Jaw)
-    if len(patches) >= 2:
-        patch_A = patches[0]
-        patch_B = patches[1]
+    # 2. Logic Branch
+    if idx_B < len(patches):
+        # --- DUAL JAW MODE ---
+        patch_A = patches[idx_A]
+        patch_B = patches[idx_B]
 
-        # Raw Centers
         raw_center_A = np.mean(centroids[patch_A], axis=0)
         raw_center_B = np.mean(centroids[patch_B], axis=0)
 
-        # --- A. SQUEEZE AXIS (Z-Flattened Normal of A) ---
+        # --- A. MASTER ORIENTATION (From Patch A Normal) ---
         norm_A = np.mean(normals[patch_A], axis=0)
-        norm_A[2] = 0.0  # Force Horizontal
+
+        # Z-Lock (Force Horizontal)
+        norm_A[2] = 0.0
         mag = np.linalg.norm(norm_A)
         if mag < 1e-6:
             norm_A = np.array([1.0, 0.0, 0.0])
         else:
             norm_A /= mag
 
-        # Squeeze Axis points INTO the part (A -> B)
+        # Squeeze Axis points INTO the part (-Normal)
         squeeze_axis = -norm_A
 
-        # --- B. SHARED RAIL (The Collinearity Fix) ---
-        # 1. Find the midpoint of the entire assembly
+        # --- B. SHARED RAIL ALIGNMENT ---
         midpoint = (raw_center_A + raw_center_B) / 2.0
 
-        # 2. Project A and B onto the line defined by [Midpoint, Squeeze_Axis]
-        # This removes any lateral (Y) or vertical (Z) misalignment
+        # Project centers onto the line defined by [Midpoint, Squeeze_Axis]
+        vec_A = raw_center_A - midpoint
+        dist_A = np.dot(vec_A, squeeze_axis)
 
-        # Vector from Midpoint to A
-        vec_mid_to_A = raw_center_A - midpoint
-        dist_A = np.dot(vec_mid_to_A, squeeze_axis)
+        vec_B = raw_center_B - midpoint
+        dist_B = np.dot(vec_B, squeeze_axis)
 
-        # Vector from Midpoint to B
-        vec_mid_to_B = raw_center_B - midpoint
-        dist_B = np.dot(vec_mid_to_B, squeeze_axis)
-
-        # Refined (Perfectly Aligned) Centers
+        # Refined Centers (Perfectly Collinear)
         aligned_center_A = midpoint + (dist_A * squeeze_axis)
         aligned_center_B = midpoint + (dist_B * squeeze_axis)
 
-        # --- C. POSITIONS WITH OFFSET ---
-        # Jaw A moves AWAY from center (minus squeeze) to open
+        # Determine shared Z-height
+        shared_z = (raw_center_A[2] + raw_center_B[2]) / 2.0
+        aligned_center_A[2] = shared_z
+        aligned_center_B[2] = shared_z
+
+        # --- C. POSITIONS ---
         pos_A = aligned_center_A - (squeeze_axis * opening_offset)
-        # Jaw B moves AWAY from center (plus squeeze) to open
         pos_B = aligned_center_B + (squeeze_axis * opening_offset)
 
-        # Orientations
-        # Jaw A faces B (along squeeze)
         T_matrix_A = get_orientation_matrix(squeeze_axis)
-        # Jaw B faces A (against squeeze)
         T_matrix_B = get_orientation_matrix(-squeeze_axis)
 
         configs = [(pos_A, T_matrix_A), (pos_B, T_matrix_B)]
 
     else:
         # --- SINGLE JAW FALLBACK ---
-        patch_A = patches[0]
+        # If user asks for pair 2/3 but only patch 2 exists
+        print(f"⚠️ Only one patch available for this solution tier.")
+        patch_A = patches[idx_A]
         center_A = np.mean(centroids[patch_A], axis=0)
 
         norm_A = np.mean(normals[patch_A], axis=0)
@@ -239,7 +233,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset):
 
     return actors
 
-
 # ============================================================
 # 4. VISUALIZATION
 # ============================================================
@@ -261,11 +254,12 @@ def visualize_inference(points, tris, probs, control_state):
         "post_process": True,
         "show_clamp": False,
         "offset": 0.0,
-        "clamp_actors": []
+        "clamp_actors": [],
+        "solution_index": 0  # 0=Best, 2=Next Best, etc.
     }
 
-    txt = Text2D("", pos="bottom-left")
-    plt.add(txt)
+    txt_info = Text2D("", pos="bottom-left")
+    plt.add(txt_info)
 
     def update_view():
         base_mask = probs[:, 0] > state["threshold"]
@@ -282,14 +276,28 @@ def visualize_inference(points, tris, probs, control_state):
         plt.remove(state["clamp_actors"])
         state["clamp_actors"] = []
 
+        status_msg = f"Offset: {state['offset']:.1f} mm"
+
         if state["show_clamp"]:
-            jaws = generate_clamp_actors(mesh, mask, adjacency, face_areas, state["offset"])
+            # PASS THE SOLUTION INDEX
+            jaws = generate_clamp_actors(
+                mesh, mask, adjacency, face_areas,
+                state["offset"],
+                pair_start_index=state["solution_index"]
+            )
+
+            if len(jaws) == 0 and state["solution_index"] > 0:
+                status_msg += " | ⚠️ No more solutions!"
+            else:
+                status_msg += f" | Solution Tier: {state['solution_index'] // 2 + 1}"
+
             state["clamp_actors"] = jaws
             plt.add(jaws)
 
-        txt.text(f"Offset: {state['offset']:.1f} mm")
+        txt_info.text(status_msg)
         plt.render()
 
+    # --- CONTROLS ---
     def slide_thresh(w, e):
         state["threshold"] = w.GetRepresentation().GetValue(); update_view()
 
@@ -305,12 +313,33 @@ def visualize_inference(points, tris, probs, control_state):
     def btn_load_next(*args):
         control_state["load_next"] = True; plt.close()
 
+    # --- NEW CALLBACKS ---
+    def btn_next_sol(*args):
+        # Increment by 2 (next pair)
+        state["solution_index"] += 2
+        # Auto-enable clamp view if user clicks next
+        state["show_clamp"] = True
+        update_view()
+
+    def btn_reset_sol(*args):
+        state["solution_index"] = 0
+        state["show_clamp"] = True
+        update_view()
+
     plt.add_slider(slide_thresh, 0.5, 0.99, value=0.90, pos=[(0.1, 0.05), (0.3, 0.05)], title="Confidence")
     plt.add_slider(slide_offset, 0.0, 100.0, value=10.0, pos=[(0.4, 0.05), (0.6, 0.05)], title="Jaw Distance (mm)")
+
+    # Row 1 Buttons
     plt.add_button(btn_smart, states=[" Smart Fill: ON ", " Smart Fill: OFF"], c=["w", "w"], bc=["g", "r"],
-                   pos=(0.8, 0.09), size=20)
-    plt.add_button(btn_clamp, states=[" Show Clamp ", " Hide Clamp "], c=["w", "w"], bc=["b", "grey"], pos=(0.8, 0.04),
+                   pos=(0.8, 0.12), size=20)
+    plt.add_button(btn_clamp, states=[" Show Clamp ", " Hide Clamp "], c=["w", "w"], bc=["b", "grey"], pos=(0.8, 0.08),
                    size=20)
+
+    # Row 2 Buttons (Solution Control)
+    plt.add_button(btn_next_sol, states=[" Next Option -> "], c=["black"], bc=["yellow"], pos=(0.6, 0.12), size=20)
+    plt.add_button(btn_reset_sol, states=[" Reset "], c=["white"], bc=["darkblue"], pos=(0.45, 0.12), size=20)
+
+    # Top Button
     plt.add_button(btn_load_next, states=[" LOAD NEW FILE "], c=["white"], bc=["orange"], pos=(0.5, 0.95), size=25,
                    font="courier")
 
@@ -337,7 +366,9 @@ if __name__ == "__main__":
 
     while True:
         stl_path = askopenfilename(title="Select Test STL", filetypes=[("STL", ".stl")])
-        if not stl_path: break
+        if not stl_path:
+            print("No file selected. Exiting.")
+            break
 
         print(f"\nProcessing: {stl_path}...")
         try:
@@ -351,8 +382,10 @@ if __name__ == "__main__":
             visualize_inference(points, tris, probs, control_state)
 
             if control_state["load_next"]:
+                print("♻️ Loading next file...")
                 continue
             else:
+                print("✅ Done. Exiting.")
                 break
 
         except Exception as e:
