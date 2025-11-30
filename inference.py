@@ -33,7 +33,7 @@ class ClampSupportNet(nn.Module):
 
 
 # ============================================================
-# 2. POST-PROCESSING
+# 2. POST-PROCESSING (Region Growing)
 # ============================================================
 def smart_expand_selection(initial_mask, prob_map, adjacency, normals, low_thresh=0.40):
     mask = initial_mask.copy()
@@ -89,7 +89,7 @@ def filter_small_islands(mask, adjacency, face_areas, min_area=50.0):
 
 
 # ============================================================
-# 3. CLAMP GENERATION (With Alternative Solutions)
+# 3. ADVANCED CLAMP GENERATION (Geometric Clustering)
 # ============================================================
 def get_orientation_matrix(forward_vector):
     x_axis = forward_vector / (np.linalg.norm(forward_vector) + 1e-6)
@@ -105,36 +105,59 @@ def get_orientation_matrix(forward_vector):
     return T
 
 
-def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pair_start_index=0):
+def get_flat_patches(mesh, mask, adjacency, face_areas):
     """
-    Identifies patches sorted by Area.
-    Picks the pair at [pair_start_index] (Tier 1, Tier 2...).
-    Uses Z-Locked Surface Normal logic for orientation.
+    Splits the selected mask into patches based on BOTH connectivity AND flatness.
+    If a patch curves around a corner, it gets split into two.
+    Returns list of patches sorted by Area.
     """
     selected_indices = np.where(mask)[0]
     if len(selected_indices) == 0: return []
 
-    # 1. Identify Clusters
+    # 1. Get Edges between selected faces
     subset_mask = mask[adjacency[:, 0]] & mask[adjacency[:, 1]]
     subset_edges = adjacency[subset_mask]
 
-    patches = []
-    if len(subset_edges) > 0:
-        G = nx.from_edgelist(subset_edges)
-        G.add_nodes_from(selected_indices)
+    if len(subset_edges) == 0:
+        return [selected_indices]  # Only isolated triangles
 
-        components = list(nx.connected_components(G))
-        comp_stats = []
-        for comp in components:
-            idx_list = list(comp)
-            total_area = np.sum(face_areas[idx_list])
-            comp_stats.append((total_area, idx_list))
+    # 2. FILTER EDGES BY ANGLE (The Fix)
+    # We check the normals of the two faces sharing the edge.
+    # If they differ by more than ~15 degrees, we cut the edge.
+    normals = mesh.cell_normals
+    norm_A = normals[subset_edges[:, 0]]
+    norm_B = normals[subset_edges[:, 1]]
 
-        # Sort descending by AREA
-        comp_stats.sort(key=lambda x: x[0], reverse=True)
-        patches = [x[1] for x in comp_stats]
-    else:
-        patches = [selected_indices]
+    # Dot product: 1.0 = Flat, 0.0 = 90 degrees
+    # 0.965 approx 15 degrees
+    dots = np.einsum('ij,ij->i', norm_A, norm_B)
+
+    # Keep only flat edges
+    flat_edges = subset_edges[dots > 0.965]
+
+    # 3. Build Graph with CUT edges
+    G = nx.from_edgelist(flat_edges)
+    # Add nodes that might have become isolated due to cuts
+    G.add_nodes_from(selected_indices)
+
+    # 4. Sort Components by Area
+    components = list(nx.connected_components(G))
+    comp_stats = []
+    for comp in components:
+        idx_list = list(comp)
+        total_area = np.sum(face_areas[idx_list])
+        comp_stats.append((total_area, idx_list))
+
+    comp_stats.sort(key=lambda x: x[0], reverse=True)
+    patches = [x[1] for x in comp_stats]
+
+    return patches
+
+
+def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pair_start_index=0):
+    # --- STEP 1: GET FLAT PATCHES ---
+    # We use the new function instead of raw connected components
+    patches = get_flat_patches(mesh, mask, adjacency, face_areas)
 
     # --- VALIDATE INDEX ---
     idx_A = pair_start_index
@@ -156,40 +179,33 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
         raw_center_A = np.mean(centroids[patch_A], axis=0)
         raw_center_B = np.mean(centroids[patch_B], axis=0)
 
-        # --- A. MASTER ORIENTATION (From Patch A Normal) ---
+        # --- MASTER ORIENTATION (From Patch A Normal) ---
         norm_A = np.mean(normals[patch_A], axis=0)
-
-        # Z-Lock (Force Horizontal)
-        norm_A[2] = 0.0
+        norm_A[2] = 0.0  # Z-Lock
         mag = np.linalg.norm(norm_A)
         if mag < 1e-6:
             norm_A = np.array([1.0, 0.0, 0.0])
         else:
             norm_A /= mag
 
-        # Squeeze Axis points INTO the part (-Normal)
         squeeze_axis = -norm_A
 
-        # --- B. SHARED RAIL ALIGNMENT ---
+        # --- SHARED RAIL ALIGNMENT ---
         midpoint = (raw_center_A + raw_center_B) / 2.0
 
-        # Project centers onto the line defined by [Midpoint, Squeeze_Axis]
         vec_A = raw_center_A - midpoint
         dist_A = np.dot(vec_A, squeeze_axis)
-
         vec_B = raw_center_B - midpoint
         dist_B = np.dot(vec_B, squeeze_axis)
 
-        # Refined Centers (Perfectly Collinear)
         aligned_center_A = midpoint + (dist_A * squeeze_axis)
         aligned_center_B = midpoint + (dist_B * squeeze_axis)
 
-        # Determine shared Z-height
         shared_z = (raw_center_A[2] + raw_center_B[2]) / 2.0
         aligned_center_A[2] = shared_z
         aligned_center_B[2] = shared_z
 
-        # --- C. POSITIONS ---
+        # --- POSITIONS ---
         pos_A = aligned_center_A - (squeeze_axis * opening_offset)
         pos_B = aligned_center_B + (squeeze_axis * opening_offset)
 
@@ -200,7 +216,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
 
     else:
         # --- SINGLE JAW FALLBACK ---
-        # If user asks for pair 2/3 but only patch 2 exists
         print(f"⚠️ Only one patch available for this solution tier.")
         patch_A = patches[idx_A]
         center_A = np.mean(centroids[patch_A], axis=0)
@@ -233,8 +248,9 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
 
     return actors
 
+
 # ============================================================
-# 4. VISUALIZATION
+# 4. VISUALIZATION (No changes needed, main loop same)
 # ============================================================
 def visualize_inference(points, tris, probs, control_state):
     print("Building mesh & graph...")
@@ -255,7 +271,7 @@ def visualize_inference(points, tris, probs, control_state):
         "show_clamp": False,
         "offset": 0.0,
         "clamp_actors": [],
-        "solution_index": 0  # 0=Best, 2=Next Best, etc.
+        "solution_index": 0
     }
 
     txt_info = Text2D("", pos="bottom-left")
@@ -279,7 +295,6 @@ def visualize_inference(points, tris, probs, control_state):
         status_msg = f"Offset: {state['offset']:.1f} mm"
 
         if state["show_clamp"]:
-            # PASS THE SOLUTION INDEX
             jaws = generate_clamp_actors(
                 mesh, mask, adjacency, face_areas,
                 state["offset"],
@@ -297,7 +312,6 @@ def visualize_inference(points, tris, probs, control_state):
         txt_info.text(status_msg)
         plt.render()
 
-    # --- CONTROLS ---
     def slide_thresh(w, e):
         state["threshold"] = w.GetRepresentation().GetValue(); update_view()
 
@@ -313,33 +327,20 @@ def visualize_inference(points, tris, probs, control_state):
     def btn_load_next(*args):
         control_state["load_next"] = True; plt.close()
 
-    # --- NEW CALLBACKS ---
     def btn_next_sol(*args):
-        # Increment by 2 (next pair)
-        state["solution_index"] += 2
-        # Auto-enable clamp view if user clicks next
-        state["show_clamp"] = True
-        update_view()
+        state["solution_index"] += 2; state["show_clamp"] = True; update_view()
 
     def btn_reset_sol(*args):
-        state["solution_index"] = 0
-        state["show_clamp"] = True
-        update_view()
+        state["solution_index"] = 0; state["show_clamp"] = True; update_view()
 
     plt.add_slider(slide_thresh, 0.5, 0.99, value=0.90, pos=[(0.1, 0.05), (0.3, 0.05)], title="Confidence")
     plt.add_slider(slide_offset, 0.0, 100.0, value=10.0, pos=[(0.4, 0.05), (0.6, 0.05)], title="Jaw Distance (mm)")
-
-    # Row 1 Buttons
     plt.add_button(btn_smart, states=[" Smart Fill: ON ", " Smart Fill: OFF"], c=["w", "w"], bc=["g", "r"],
                    pos=(0.8, 0.12), size=20)
     plt.add_button(btn_clamp, states=[" Show Clamp ", " Hide Clamp "], c=["w", "w"], bc=["b", "grey"], pos=(0.8, 0.08),
                    size=20)
-
-    # Row 2 Buttons (Solution Control)
     plt.add_button(btn_next_sol, states=[" Next Option -> "], c=["black"], bc=["yellow"], pos=(0.6, 0.12), size=20)
     plt.add_button(btn_reset_sol, states=[" Reset "], c=["white"], bc=["darkblue"], pos=(0.45, 0.12), size=20)
-
-    # Top Button
     plt.add_button(btn_load_next, states=[" LOAD NEW FILE "], c=["white"], bc=["orange"], pos=(0.5, 0.95), size=25,
                    font="courier")
 
@@ -350,44 +351,28 @@ def visualize_inference(points, tris, probs, control_state):
 if __name__ == "__main__":
     root = Tk()
     root.withdraw()
-
     model_path = askopenfilename(title="Select Model (.pth)", filetypes=[("Model", "*.pth")])
     if not model_path: exit()
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Loading model from {model_path}...")
     model = ClampSupportNet(in_dim=13).to(device)
-    try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
-    except Exception as e:
-        print(f"❌ Error loading weights: {e}")
-        exit()
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
     while True:
         stl_path = askopenfilename(title="Select Test STL", filetypes=[("STL", ".stl")])
-        if not stl_path:
-            print("No file selected. Exiting.")
-            break
-
+        if not stl_path: break
         print(f"\nProcessing: {stl_path}...")
         try:
             feats, tris, points = features.extract_triangle_features(stl_path)
             input_tensor = torch.tensor(feats, dtype=torch.float32).to(device)
-
             with torch.no_grad():
                 probs = torch.sigmoid(model(input_tensor)).cpu().numpy()
-
             control_state = {"load_next": False}
             visualize_inference(points, tris, probs, control_state)
-
             if control_state["load_next"]:
-                print("♻️ Loading next file...")
                 continue
             else:
-                print("✅ Done. Exiting.")
                 break
-
         except Exception as e:
             print(f"❌ Critical Error: {e}")
             import traceback
