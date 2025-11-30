@@ -33,7 +33,7 @@ class ClampSupportNet(nn.Module):
 
 
 # ============================================================
-# 2. POST-PROCESSING (Region Growing)
+# 2. POST-PROCESSING
 # ============================================================
 def smart_expand_selection(initial_mask, prob_map, adjacency, normals, low_thresh=0.40):
     mask = initial_mask.copy()
@@ -89,7 +89,7 @@ def filter_small_islands(mask, adjacency, face_areas, min_area=50.0):
 
 
 # ============================================================
-# 3. ADVANCED CLAMP GENERATION (Geometric Clustering)
+# 3. ADVANCED CLAMP GENERATION (Valid Pairs Only)
 # ============================================================
 def get_orientation_matrix(forward_vector):
     x_axis = forward_vector / (np.linalg.norm(forward_vector) + 1e-6)
@@ -106,41 +106,25 @@ def get_orientation_matrix(forward_vector):
 
 
 def get_flat_patches(mesh, mask, adjacency, face_areas):
-    """
-    Splits the selected mask into patches based on BOTH connectivity AND flatness.
-    If a patch curves around a corner, it gets split into two.
-    Returns list of patches sorted by Area.
-    """
     selected_indices = np.where(mask)[0]
     if len(selected_indices) == 0: return []
 
-    # 1. Get Edges between selected faces
     subset_mask = mask[adjacency[:, 0]] & mask[adjacency[:, 1]]
     subset_edges = adjacency[subset_mask]
 
-    if len(subset_edges) == 0:
-        return [selected_indices]  # Only isolated triangles
+    if len(subset_edges) == 0: return [selected_indices]
 
-    # 2. FILTER EDGES BY ANGLE (The Fix)
-    # We check the normals of the two faces sharing the edge.
-    # If they differ by more than ~15 degrees, we cut the edge.
     normals = mesh.cell_normals
     norm_A = normals[subset_edges[:, 0]]
     norm_B = normals[subset_edges[:, 1]]
-
-    # Dot product: 1.0 = Flat, 0.0 = 90 degrees
-    # 0.965 approx 15 degrees
     dots = np.einsum('ij,ij->i', norm_A, norm_B)
 
-    # Keep only flat edges
+    # Split sharp corners
     flat_edges = subset_edges[dots > 0.965]
 
-    # 3. Build Graph with CUT edges
     G = nx.from_edgelist(flat_edges)
-    # Add nodes that might have become isolated due to cuts
     G.add_nodes_from(selected_indices)
 
-    # 4. Sort Components by Area
     components = list(nx.connected_components(G))
     comp_stats = []
     for comp in components:
@@ -150,49 +134,111 @@ def get_flat_patches(mesh, mask, adjacency, face_areas):
 
     comp_stats.sort(key=lambda x: x[0], reverse=True)
     patches = [x[1] for x in comp_stats]
-
     return patches
 
 
-def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pair_start_index=0):
-    # --- STEP 1: GET FLAT PATCHES ---
-    # We use the new function instead of raw connected components
-    patches = get_flat_patches(mesh, mask, adjacency, face_areas)
+def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, solution_index=0, min_area=50.0):
+    """
+    Returns: (actors, active_indices)
 
-    # --- VALIDATE INDEX ---
-    idx_A = pair_start_index
-    idx_B = pair_start_index + 1
+    Generates solutions where patches are EXCLUSIVE.
+    Once a patch is used in Solution N, it cannot appear in Solution N+1.
+    """
+    # 1. Get Geometric Patches
+    raw_patches = get_flat_patches(mesh, mask, adjacency, face_areas)
+    if len(raw_patches) == 0: return [], []
 
-    if idx_A >= len(patches):
-        print(f"⚠️ No more solutions (Requested Patch #{idx_A}, Total {len(patches)}).")
-        return []
+    # 2. Filter by Size
+    patches = []
+    for p in raw_patches:
+        area = np.sum(face_areas[p])
+        if area >= min_area:
+            patches.append(p)
 
+    if len(patches) == 0:
+        print(f"⚠️ All patches were too small (Noise).")
+        return [], []
+
+    # 3. Calculate Normals
     centroids = mesh.cell_centers().points
     normals = mesh.cell_normals
 
-    # 2. Logic Branch
-    if idx_B < len(patches):
-        # --- DUAL JAW MODE ---
-        patch_A = patches[idx_A]
-        patch_B = patches[idx_B]
+    patch_normals = []
+    for p in patches:
+        n = np.mean(normals[p], axis=0)
+        n /= (np.linalg.norm(n) + 1e-6)
+        patch_normals.append(n)
+
+    # 4. Generate ALL Candidates first
+    # We store tuples: (Total_Area, Index_A, Index_B)
+    candidate_pairs = []
+
+    if len(patches) >= 2:
+        for i in range(len(patches)):
+            for j in range(i + 1, len(patches)):
+                n1 = patch_normals[i]
+                n2 = patch_normals[j]
+
+                # Check angle (Opposing)
+                alignment = np.dot(n1, n2)
+
+                if alignment < -0.5:
+                    # Calculate combined area to rank this pair
+                    area_i = np.sum(face_areas[patches[i]])
+                    area_j = np.sum(face_areas[patches[j]])
+                    score = area_i + area_j
+                    candidate_pairs.append((score, i, j))
+
+    # Sort candidates by Score (Largest combined area first)
+    candidate_pairs.sort(key=lambda x: x[0], reverse=True)
+
+    # 5. GREEDY SELECTION (The "Unique Patch" Logic)
+    unique_solutions = []
+    used_patch_indices = set()
+
+    # Pass 1: Fill list with valid pairs
+    for _, idx_A, idx_B in candidate_pairs:
+        # If NEITHER patch has been used yet
+        if (idx_A not in used_patch_indices) and (idx_B not in used_patch_indices):
+            unique_solutions.append(('pair', patches[idx_A], patches[idx_B]))
+            used_patch_indices.add(idx_A)
+            used_patch_indices.add(idx_B)
+
+    # Pass 2: If we still have unused patches, add them as Single Jaw fallbacks
+    # (Only if they are large enough)
+    for i in range(len(patches)):
+        if i not in used_patch_indices:
+            unique_solutions.append(('single', patches[i], None))
+            used_patch_indices.add(i)
+
+    # 6. RETRIEVE REQUESTED SOLUTION
+    if solution_index >= len(unique_solutions):
+        print(f"⚠️ No more unique solutions found (Requested #{solution_index + 1}, Found {len(unique_solutions)}).")
+        return [], []
+
+    sol_type, patch_A, patch_B = unique_solutions[solution_index]
+
+    # 7. GENERATE ACTORS (Standard Logic)
+    actors = []
+
+    if sol_type == 'pair':
+        active_indices = np.concatenate([patch_A, patch_B])
 
         raw_center_A = np.mean(centroids[patch_A], axis=0)
         raw_center_B = np.mean(centroids[patch_B], axis=0)
 
-        # --- MASTER ORIENTATION (From Patch A Normal) ---
+        # Normals & Z-Lock
         norm_A = np.mean(normals[patch_A], axis=0)
-        norm_A[2] = 0.0  # Z-Lock
-        mag = np.linalg.norm(norm_A)
-        if mag < 1e-6:
+        norm_A[2] = 0.0
+        if np.linalg.norm(norm_A) < 1e-6:
             norm_A = np.array([1.0, 0.0, 0.0])
         else:
-            norm_A /= mag
+            norm_A /= np.linalg.norm(norm_A)
 
         squeeze_axis = -norm_A
 
-        # --- SHARED RAIL ALIGNMENT ---
+        # Shared Rail
         midpoint = (raw_center_A + raw_center_B) / 2.0
-
         vec_A = raw_center_A - midpoint
         dist_A = np.dot(vec_A, squeeze_axis)
         vec_B = raw_center_B - midpoint
@@ -205,7 +251,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
         aligned_center_A[2] = shared_z
         aligned_center_B[2] = shared_z
 
-        # --- POSITIONS ---
         pos_A = aligned_center_A - (squeeze_axis * opening_offset)
         pos_B = aligned_center_B + (squeeze_axis * opening_offset)
 
@@ -215,9 +260,8 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
         configs = [(pos_A, T_matrix_A), (pos_B, T_matrix_B)]
 
     else:
-        # --- SINGLE JAW FALLBACK ---
-        print(f"⚠️ Only one patch available for this solution tier.")
-        patch_A = patches[idx_A]
+        # Single Jaw
+        active_indices = patch_A
         center_A = np.mean(centroids[patch_A], axis=0)
 
         norm_A = np.mean(normals[patch_A], axis=0)
@@ -233,8 +277,7 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
 
         configs = [(pos_A, T_matrix)]
 
-    # 3. Create Actors
-    actors = []
+    # Draw
     jaw_width = 80.0
     jaw_height = 25.0
     jaw_thickness = 10.0
@@ -246,11 +289,9 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, pai
         j.c("grey").alpha(0.8).linecolor("black")
         actors.append(j)
 
-    return actors
-
-
+    return actors, active_indices
 # ============================================================
-# 4. VISUALIZATION (No changes needed, main loop same)
+# 4. VISUALIZATION
 # ============================================================
 def visualize_inference(points, tris, probs, control_state):
     print("Building mesh & graph...")
@@ -287,28 +328,35 @@ def visualize_inference(points, tris, probs, control_state):
 
         cols = np.full((mesh.ncells, 4), [220, 220, 220, 50], dtype=np.uint8)
         cols[mask] = [255, 0, 0, 255]
-        mesh.cellcolors = cols
 
         plt.remove(state["clamp_actors"])
         state["clamp_actors"] = []
+        active_indices = []
 
         status_msg = f"Offset: {state['offset']:.1f} mm"
 
         if state["show_clamp"]:
-            jaws = generate_clamp_actors(
+            jaws, active_indices = generate_clamp_actors(
                 mesh, mask, adjacency, face_areas,
                 state["offset"],
-                pair_start_index=state["solution_index"]
+                solution_index=state["solution_index"],
+                min_area=50.0  # <--- Ensures tiny patches are ignored
             )
 
             if len(jaws) == 0 and state["solution_index"] > 0:
-                status_msg += " | ⚠️ No more solutions!"
+                status_msg += " | ⚠️ No more valid pairs!"
             else:
-                status_msg += f" | Solution Tier: {state['solution_index'] // 2 + 1}"
+                # 1-based tier for display
+                status_msg += f" | Solution Tier: {state['solution_index'] + 1}"
 
             state["clamp_actors"] = jaws
             plt.add(jaws)
 
+        # Highlight Active Patch Green
+        if len(active_indices) > 0:
+            cols[active_indices] = [0, 255, 0, 255]  # Green
+
+        mesh.cellcolors = cols
         txt_info.text(status_msg)
         plt.render()
 
@@ -327,8 +375,14 @@ def visualize_inference(points, tris, probs, control_state):
     def btn_load_next(*args):
         control_state["load_next"] = True; plt.close()
 
+    # NEW: Increment by 1 because we now have a list of Valid Pairs
+        # Inside visualize_inference...
+
+        # Increment by 1 because generate_clamp_actors now manages the list of unique solutions internally
     def btn_next_sol(*args):
-        state["solution_index"] += 2; state["show_clamp"] = True; update_view()
+        state["solution_index"] += 1
+        state["show_clamp"] = True
+        update_view()
 
     def btn_reset_sol(*args):
         state["solution_index"] = 0; state["show_clamp"] = True; update_view()
