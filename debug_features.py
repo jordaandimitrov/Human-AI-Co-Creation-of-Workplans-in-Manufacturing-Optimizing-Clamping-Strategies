@@ -1,63 +1,51 @@
-# debug_features.py
 import numpy as np
 import trimesh
-from vedo import Mesh, Plotter, Text2D, Line, Points
+from vedo import Mesh, Plotter, Text2D, Line, Points, Arrow
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 
-# --- IMPORT FROM YOUR FEATURE SCRIPT ---
-# This ensures the heatmap matches your training data exactly.
+# --- IMPORT SHARED LOGIC ---
 try:
     from features import compute_outerness
 except ImportError:
-    print("❌ ERROR: Could not find 'features.py'. Make sure it is in the same folder.")
+    print("❌ ERROR: Could not find 'features.py'. Ensure it's in the same folder.")
     exit()
 
 
 def run_debug_tool():
+    # 1. Load File
     Tk().withdraw()
     path = askopenfilename(title="Select STL to Debug", filetypes=[("STL", ".stl")])
     if not path: return
 
-    print(f"Loading {path}...")
+    print(f"Processing {path}...")
     mesh = Mesh(path)
-    mesh.triangulate()  # Ensure consistency
+    mesh.triangulate()
 
     centroids = mesh.cell_centers().points
     normals = mesh.cell_normals
 
-    # ==========================================
-    # 1. USE IMPORTED LOGIC (Convex Hull)
-    # ==========================================
-    print("Computing Outerness (Convex Hull)...")
-    outerness_map = compute_outerness(mesh, centroids)
-    print("Computing Outerness (Convex Hull)...")
+    # 2. Pre-Calculate Features
+    print("   1/3 Computing Outerness (Convex Hull)...")
     outerness_map = compute_outerness(mesh, centroids)
 
-    # --- SANITY CHECK ---
-    print(f"📊 DEBUG STATS:")
-    print(f"   Min Outerness: {np.min(outerness_map):.4f}")
-    print(f"   Max Outerness: {np.max(outerness_map):.4f}")
-    print(f"   Mean Outerness: {np.mean(outerness_map):.4f}")
-    # --------------------
-    # ==========================================
-    # 2. RE-RUN RAY CASTING FOR VISUALIZATION
-    # ==========================================
-    # We re-run this locally so we can create the heatmap
-    print("Computing Ray Scores...")
-    tm = trimesh.Trimesh(vertices=mesh.points, faces=mesh.cells, process=False)
+    print("   2/3 Computing Elite Mask...")
     verticality = 1.0 - np.abs(normals[:, 2])
-
-    # Elite Definition (Must match features.py threshold)
     is_elite = (verticality > 0.8) & (outerness_map > 0.85)
 
-    candidate_indices = np.where(is_elite)[0]
+
+
+    print("   3/3 Computing Full Ray Scores (X-Ray Mode)...")
+    tm = trimesh.Trimesh(vertices=mesh.points, faces=mesh.cells, process=False)
     ray_score_map = np.zeros(mesh.ncells)
+
+    candidate_indices = np.where(is_elite)[0]
 
     if len(candidate_indices) > 0:
         c_norms = normals[candidate_indices]
         c_cents = centroids[candidate_indices]
 
+        # Jitter Setup
         world_z = np.array([0, 0, 1])
         tangent = np.cross(c_norms, world_z)
         norms = np.linalg.norm(tangent, axis=1, keepdims=True) + 1e-6
@@ -77,103 +65,138 @@ def run_debug_tool():
 
         for origins in origins_list:
             start_pts = origins - (c_norms * 0.01)
+
+            # --- ROBUST CROSS-PLATFORM RAY CAST ---
             try:
-                idx_tri, idx_ray, _ = tm.ray.intersects_id(
+                # We ask for locations explicitly so we generally get 3 values
+                # But we handle the tuple size just in case
+                res = tm.ray.intersects_id(
                     ray_origins=start_pts, ray_directions=-c_norms,
-                    multiple_hits=False, max_d=500.0
+                    multiple_hits=True, max_d=500.0, return_locations=True
                 )
-            except:
+
+                # Dynamic Unpacking
+                if len(res) == 3:
+                    idx_tri, idx_ray, _ = res
+                elif len(res) == 2:
+                    idx_tri, idx_ray = res
+                else:
+                    idx_tri, idx_ray = [], []
+
+            except Exception as e:
+                print(f"   ⚠️ Ray cast failed: {e}")
                 idx_tri, idx_ray = [], []
+            # --------------------------------------
 
             if len(idx_ray) > 0:
                 s_idx = idx_ray
                 t_idx = idx_tri
 
-                # Check Logic
                 s_n = c_norms[s_idx]
                 t_n = normals[t_idx]
+                t_out = outerness_map[t_idx]
+
                 align = np.einsum('ij,ij->i', s_n, t_n)
                 t_vert = 1.0 - np.abs(t_n[:, 2])
 
-                # TARGET ELITE CHECK (Uses imported outerness)
-                t_out = outerness_map[t_idx]
-                t_is_elite = t_out > 0.85
+                # Check
+                valid = (align < -0.85) & (t_vert > 0.85) & (t_out > 0.85)
 
-                valid = (align < -0.85) & (t_vert > 0.85) & t_is_elite
-                hits[s_idx[valid]] += 0.2
+                good_rays = s_idx[valid]
+                unique_good = np.unique(good_rays)
+                hits[unique_good] += 0.2
 
         ray_score_map[candidate_indices] = hits
 
     # ==========================================
-    # 3. INTERACTIVE PLOTTER
+    # 3. GUI SETUP
     # ==========================================
-    plt = Plotter(title="Convex Hull Debugger", bg="blackboard", axes=1)
+    plt = Plotter(title="Feature Debugger", bg="blackboard", axes=1)
 
-    txt_mode = Text2D("Mode: 1 - Convex Hull Heatmap", pos="top-left", s=1.1, c="yellow")
-    txt_info = Text2D("Click a face to inspect", pos="bottom-left", s=0.9, c="white")
+    state = {
+        "mode": "outerness",
+        "debug_actors": []
+    }
 
-    state = {"mode": 1, "actors": []}
+    info_txt = Text2D(
+        "Click a face to fire laser beams.\nCheck console for hit details.",
+        pos="bottom-left", s=0.9, c="gray"
+    )
+    plt.add(info_txt)
 
-    def update_view():
-        # FIX: Do not use cellcolors = None.
-        # Instead, set the mesh to a solid base color to clear previous arrays.
-        mesh.c("gold")
+    def set_mode(mode_name):
+        state["mode"] = mode_name
+        mesh.c("gold")  # Clear previous colors
 
-        if state["mode"] == 1:
-            txt_mode.text("Mode: 1 - Outerness (Red=Outer, Blue=Inner)")
-            # Map scalar data to cells
-            mesh.cmap("jet", outerness_map, vmin=0.0, vmax=1.0, on='cells')
+        if mode_name == "outerness":
+            mesh.cmap("jet", outerness_map, vmin=0, vmax=1, on='cells')
+            # Safe scalarbar removal
+            try:
+                plt.remove("Legend")
+            except:
+                pass
+            mesh.add_scalarbar(title="Outerness")
 
-        elif state["mode"] == 2:
-            txt_mode.text("Mode: 2 - Ray Score (Red=Good, Blue=Bad)")
-            # Map scalar data to cells
-            mesh.cmap("jet", ray_score_map, vmin=0.0, vmax=1.0, on='cells')
+        elif mode_name == "rays":
+            mesh.cmap("jet", ray_score_map, vmin=0, vmax=1, on='cells')
+            try:
+                plt.remove("Legend")
+            except:
+                pass
+            mesh.add_scalarbar(title="Ray Score")
 
-        elif state["mode"] == 3:
-            txt_mode.text("Mode: 3 - Elite Mask (Green=Candidate)")
-            # Manual coloring
-            cols = np.full((mesh.ncells, 3), 50, dtype=np.uint8)  # Dark Grey
-            cols[is_elite] = [0, 255, 0]  # Green
+        elif mode_name == "mask":
+            cols = np.full((mesh.ncells, 3), 80, dtype=np.uint8)
+            cols[is_elite] = [0, 255, 0]
             mesh.cellcolors = cols
+            try:
+                plt.remove("Legend")
+            except:
+                pass
 
         plt.render()
 
-    def on_key(evt):
-        if evt.keypress == "1":
-            state["mode"] = 1
-        elif evt.keypress == "2":
-            state["mode"] = 2
-        elif evt.keypress == "3":
-            state["mode"] = 3
-        update_view()
+    # --- FIX 1: ACCEPT ARGUMENTS (*args) ---
+    def btn_outer(*args):
+        set_mode("outerness")
 
+    def btn_rays(*args):
+        set_mode("rays")
+
+    def btn_mask(*args):
+        set_mode("mask")
+
+    plt.add_button(btn_outer, states=[" Show Outerness "], c=["w"], bc=["r"], pos=(0.2, 0.05), size=25, font="courier")
+    plt.add_button(btn_rays, states=[" Show Ray Scores "], c=["w"], bc=["b"], pos=(0.5, 0.05), size=25, font="courier")
+    plt.add_button(btn_mask, states=[" Show Elite Mask "], c=["black"], bc=["g"], pos=(0.8, 0.05), size=25,
+                   font="courier")
+
+    # --- FIX 2: ROBUST CLICK HANDLER ---
     def on_click(evt):
+        # Check if we actually clicked the mesh
         if not evt.actor: return
-        plt.remove(state["actors"])
-        state["actors"] = []
 
-        # Get Face ID
+        # Check if a 3D point was actually picked
         pt = evt.picked3d
+        if pt is None: return
+
+        plt.remove(state["debug_actors"])
+        state["debug_actors"] = []
+
         res = mesh.closest_point(pt, return_cell_id=True)
         fid = res[-1] if isinstance(res, (list, tuple)) else res
 
-        print(f"\n--- Face {fid} ---")
-        val = outerness_map[fid]
-        print(f"Outerness: {val:.4f}")
-
-        if val < 0.85:
-            print("⚠️ REJECTED: Too deep inside (Threshold 0.85)")
-            return
+        print(f"\n{'=' * 40}")
+        print(f"🔍 INSPECTING FACE {fid}")
+        print(f"   Outerness: {outerness_map[fid]:.4f}")
 
         if not is_elite[fid]:
-            print("⚠️ REJECTED: Not vertical enough")
+            print("   ⚠️ Cannot shoot rays: Face is not an Elite Candidate.")
             return
 
-        # Visualize Rays for this specific face
         c_cent = centroids[fid]
         c_norm = normals[fid]
 
-        # Jitter
         world_z = np.array([0, 0, 1])
         tan = np.cross(c_norm, world_z)
         tan = tan / (np.linalg.norm(tan) + 1e-6)
@@ -181,46 +204,65 @@ def run_debug_tool():
         off = 3.0
 
         origins = [c_cent, c_cent + tan * off, c_cent - tan * off, c_cent + bitan * off, c_cent - bitan * off]
-        names = ["Center", "Right", "Left", "Up", "Down"]
+        labels = ["Center", "Right ", "Left  ", "Up    ", "Down  "]
 
         for i, start in enumerate(origins):
             direction = -c_norm
-            # Shoot 1 ray
+
+            # X-RAY MODE DEBUGGING
             idx_tri, _, locs = tm.ray.intersects_id(
-                ray_origins=[start - c_norm * 0.01], ray_directions=[direction],
-                multiple_hits=False, max_d=500.0, return_locations=True
+                ray_origins=[start - c_norm * 0.01],
+                ray_directions=[direction],
+                multiple_hits=True,
+                max_d=500.0,
+                return_locations=True
             )
 
-            color = "red"
             if len(idx_tri) > 0:
-                t_idx = idx_tri[0]
-                t_out = outerness_map[t_idx]  # IMPORTED CHECK
+                dists = np.linalg.norm(locs - start, axis=1)
+                sorted_indices = np.argsort(dists)
+                idx_tri = idx_tri[sorted_indices]
+                locs = locs[sorted_indices]
 
-                t_norm = normals[t_idx]
-                align = np.dot(c_norm, t_norm)
-                t_vert = 1.0 - abs(t_norm[2])
+                found_valid = False
 
-                if t_out > 0.85 and align < -0.85 and t_vert > 0.85:
-                    color = "green"
-                    print(f"Ray {i}: VALID Hit (Target Outerness {t_out:.2f})")
-                else:
-                    color = "orange"
-                    print(f"Ray {i}: INVALID Hit (Target Outerness {t_out:.2f})")
+                for k, t_idx in enumerate(idx_tri):
+                    t_loc = locs[k]
+                    t_out = outerness_map[t_idx]
+                    t_norm = normals[t_idx]
 
-                ln = Line(start, locs[0], c=color, lw=3)
-                pt = Points([locs[0]], r=8, c=color)
-                state["actors"].extend([ln, pt])
+                    align = np.dot(c_norm, t_norm)
+                    t_vert = 1.0 - abs(t_norm[2])
+
+                    if (align < -0.85) and (t_vert > 0.85) and (t_out > 0.85):
+                        color = "green"
+                        ln = Line(start, t_loc, c=color, lw=4)
+                        pt = Points([t_loc], r=12, c=color)
+                        state["debug_actors"].extend([ln, pt])
+                        print(f"   [{labels[i]}] -> ✅ VALID HIT (Passed {k} inner walls)")
+                        found_valid = True
+                        break
+                    else:
+                        # Visualize ignored inner wall hits
+                        pt = Points([t_loc], r=5, c="orange")
+                        state["debug_actors"].append(pt)
+
+                if not found_valid:
+                    print(f"   [{labels[i]}] -> ❌ HIT INVALID (Only Recesses found)")
+                    ln = Line(start, locs[-1], c="orange", lw=2)
+                    state["debug_actors"].append(ln)
+
             else:
-                print(f"Ray {i}: MISS (Slot?)")
-                ln = Line(start, start + direction * 50, c="red", lw=1, alpha=0.5)
-                state["actors"].append(ln)
+                vis_end = start + (direction * 80.0)
+                ln = Line(start, vis_end, c="red", lw=1, alpha=0.3)
+                state["debug_actors"].append(ln)
+                print(f"   [{labels[i]}] -> 💨 MISS")
 
-        plt.add(state["actors"])
+        plt.add(state["debug_actors"])
         plt.render()
 
-    plt.add_callback("key press", on_key)
     plt.add_callback("mouse click", on_click)
-    update_view()
+    set_mode("outerness")
     plt.show(mesh, interactive=True)
 
 
