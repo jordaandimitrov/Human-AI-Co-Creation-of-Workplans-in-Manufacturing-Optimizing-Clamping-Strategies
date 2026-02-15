@@ -137,18 +137,16 @@ def get_flat_patches(mesh, mask, adjacency, face_areas):
     return patches
 
 
-def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, solution_index=0, min_area=50.0):
+def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, base_dims, solution_index=0,
+                          min_area=50.0):
     """
     Returns: (actors, active_indices)
-
-    Generates solutions where patches are EXCLUSIVE.
-    Once a patch is used in Solution N, it cannot appear in Solution N+1.
+    Also generates the VISE BASE at the bottom of the part.
+    base_dims = (width, length) from sliders.
     """
-    # 1. Get Geometric Patches
     raw_patches = get_flat_patches(mesh, mask, adjacency, face_areas)
     if len(raw_patches) == 0: return [], []
 
-    # 2. Filter by Size
     patches = []
     for p in raw_patches:
         area = np.sum(face_areas[p])
@@ -159,7 +157,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
         print(f"⚠️ All patches were too small (Noise).")
         return [], []
 
-    # 3. Calculate Normals
     centroids = mesh.cell_centers().points
     normals = mesh.cell_normals
 
@@ -169,57 +166,55 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
         n /= (np.linalg.norm(n) + 1e-6)
         patch_normals.append(n)
 
-    # 4. Generate ALL Candidates first
-    # We store tuples: (Total_Area, Index_A, Index_B)
-    candidate_pairs = []
-
+    valid_pairs = []
     if len(patches) >= 2:
         for i in range(len(patches)):
             for j in range(i + 1, len(patches)):
                 n1 = patch_normals[i]
                 n2 = patch_normals[j]
-
-                # Check angle (Opposing)
                 alignment = np.dot(n1, n2)
-
                 if alignment < -0.5:
-                    # Calculate combined area to rank this pair
                     area_i = np.sum(face_areas[patches[i]])
                     area_j = np.sum(face_areas[patches[j]])
                     score = area_i + area_j
-                    candidate_pairs.append((score, i, j))
+                    valid_pairs.append((score, patches[i], patches[j]))
 
-    # Sort candidates by Score (Largest combined area first)
-    candidate_pairs.sort(key=lambda x: x[0], reverse=True)
+    valid_pairs.sort(key=lambda x: x[0], reverse=True)
 
-    # 5. GREEDY SELECTION (The "Unique Patch" Logic)
-    unique_solutions = []
     used_patch_indices = set()
+    unique_solutions = []
 
-    # Pass 1: Fill list with valid pairs
-    for _, idx_A, idx_B in candidate_pairs:
-        # If NEITHER patch has been used yet
-        if (idx_A not in used_patch_indices) and (idx_B not in used_patch_indices):
-            unique_solutions.append(('pair', patches[idx_A], patches[idx_B]))
-            used_patch_indices.add(idx_A)
-            used_patch_indices.add(idx_B)
+    # Map patch IDs back to index for tracking
+    patch_id_map = {id(p): i for i, p in enumerate(patches)}
 
-    # Pass 2: If we still have unused patches, add them as Single Jaw fallbacks
-    # (Only if they are large enough)
-    for i in range(len(patches)):
-        if i not in used_patch_indices:
-            unique_solutions.append(('single', patches[i], None))
-            used_patch_indices.add(i)
+    for _, pA, pB in valid_pairs:
+        idA = patch_id_map[id(pA)]
+        idB = patch_id_map[id(pB)]
+        if (idA not in used_patch_indices) and (idB not in used_patch_indices):
+            unique_solutions.append(('pair', pA, pB))
+            used_patch_indices.add(idA)
+            used_patch_indices.add(idB)
 
     # 6. RETRIEVE REQUESTED SOLUTION
     if solution_index >= len(unique_solutions):
-        print(f"⚠️ No more unique solutions found (Requested #{solution_index + 1}, Found {len(unique_solutions)}).")
+        print(f"⚠️ No more unique solutions found.")
         return [], []
 
     sol_type, patch_A, patch_B = unique_solutions[solution_index]
 
-    # 7. GENERATE ACTORS (Standard Logic)
     actors = []
+
+    # --- COMMON VISE PARAMETERS ---
+    jaw_width = 80.0
+    jaw_height = 25.0
+    jaw_thickness = 10.0
+
+    # Calculate Part Bottom (Z min)
+    # The vise base sits here.
+    part_z_min = mesh.bounds()[4]  # [xmin, xmax, ymin, ymax, zmin, zmax]
+
+    # We need the CENTER of the clamp for the base position
+    clamp_center_xy = np.array([0.0, 0.0, 0.0])  # Placeholder
 
     if sol_type == 'pair':
         active_indices = np.concatenate([patch_A, patch_B])
@@ -227,7 +222,6 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
         raw_center_A = np.mean(centroids[patch_A], axis=0)
         raw_center_B = np.mean(centroids[patch_B], axis=0)
 
-        # Normals & Z-Lock
         norm_A = np.mean(normals[patch_A], axis=0)
         norm_A[2] = 0.0
         if np.linalg.norm(norm_A) < 1e-6:
@@ -237,8 +231,9 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
 
         squeeze_axis = -norm_A
 
-        # Shared Rail
         midpoint = (raw_center_A + raw_center_B) / 2.0
+        clamp_center_xy = midpoint  # For base placement
+
         vec_A = raw_center_A - midpoint
         dist_A = np.dot(vec_A, squeeze_axis)
         vec_B = raw_center_B - midpoint
@@ -247,9 +242,14 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
         aligned_center_A = midpoint + (dist_A * squeeze_axis)
         aligned_center_B = midpoint + (dist_B * squeeze_axis)
 
-        shared_z = (raw_center_A[2] + raw_center_B[2]) / 2.0
-        aligned_center_A[2] = shared_z
-        aligned_center_B[2] = shared_z
+        # Jaws are sliding, so their Z is determined by the part surface
+        # But we want the JAWS to slide ON TOP of the base.
+        # So Jaw Bottom = Part Bottom.
+        # Jaw Center Z = Part Bottom + Jaw Height / 2
+
+        jaw_z = part_z_min + (jaw_height / 2.0)
+        aligned_center_A[2] = jaw_z
+        aligned_center_B[2] = jaw_z
 
         pos_A = aligned_center_A - (squeeze_axis * opening_offset)
         pos_B = aligned_center_B + (squeeze_axis * opening_offset)
@@ -259,37 +259,42 @@ def generate_clamp_actors(mesh, mask, adjacency, face_areas, opening_offset, sol
 
         configs = [(pos_A, T_matrix_A), (pos_B, T_matrix_B)]
 
-    else:
-        # Single Jaw
-        active_indices = patch_A
-        center_A = np.mean(centroids[patch_A], axis=0)
-
-        norm_A = np.mean(normals[patch_A], axis=0)
-        norm_A[2] = 0.0
-        if np.linalg.norm(norm_A) < 1e-6:
-            norm_A = np.array([1.0, 0.0, 0.0])
-        else:
-            norm_A /= np.linalg.norm(norm_A)
-
-        squeeze_axis = -norm_A
-        T_matrix = get_orientation_matrix(squeeze_axis)
-        pos_A = center_A - (squeeze_axis * opening_offset)
-
-        configs = [(pos_A, T_matrix)]
-
-    # Draw
-    jaw_width = 80.0
-    jaw_height = 25.0
-    jaw_thickness = 10.0
-
+    # 7. GENERATE JAWS
     for pos, transform in configs:
         j = Box(pos=(0, 0, 0), length=jaw_thickness, width=jaw_width, height=jaw_height)
         j.apply_transform(transform)
         j.pos(pos)
-        j.c("grey").alpha(0.8).linecolor("black")
+        j.c("grey").alpha(0.9).linecolor("black")
         actors.append(j)
 
+    # 8. GENERATE VISE BASE
+    # Base is a big block underneath.
+    # Top of Base = part_z_min.
+    # Height of Base = 50mm (arbitrary thick block)
+    base_h = 50.0
+    base_w = base_dims[0]  # From slider
+    base_l = base_dims[1]  # From slider
+
+    # Center of base
+    # X,Y = Center of clamp action (midpoint)
+    # Z = part_z_min - (base_h / 2)
+    base_pos = np.copy(clamp_center_xy)
+    base_pos[2] = part_z_min - (base_h / 2.0)
+
+    # Orient base to match Squeeze Axis
+    # Squeeze Axis corresponds to Length of the vise usually
+    T_base = get_orientation_matrix(squeeze_axis)
+
+    base_box = Box(pos=(0, 0, 0), length=base_l, width=base_w, height=base_h)
+    base_box.apply_transform(T_base)
+    base_box.pos(base_pos)
+    base_box.c("darkgrey").alpha(1.0).linecolor("black")
+
+    actors.append(base_box)
+
     return actors, active_indices
+
+
 # ============================================================
 # 4. VISUALIZATION
 # ============================================================
@@ -311,6 +316,8 @@ def visualize_inference(points, tris, probs, control_state):
         "post_process": True,
         "show_clamp": False,
         "offset": 0.0,
+        "base_width": 100.0,
+        "base_length": 200.0,
         "clamp_actors": [],
         "solution_index": 0
     }
@@ -333,26 +340,27 @@ def visualize_inference(points, tris, probs, control_state):
         state["clamp_actors"] = []
         active_indices = []
 
-        status_msg = f"Offset: {state['offset']:.1f} mm"
+        status_msg = f"Jaw Offset: {state['offset']:.1f} mm"
 
         if state["show_clamp"]:
+            # Pass tuple (Width, Length) for base
+            base_dims = (state["base_width"], state["base_length"])
+
             jaws, active_indices = generate_clamp_actors(
                 mesh, mask, adjacency, face_areas,
-                state["offset"],
+                state["offset"], base_dims,
                 solution_index=state["solution_index"],
-                min_area=50.0  # <--- Ensures tiny patches are ignored
+                min_area=50.0
             )
 
             if len(jaws) == 0 and state["solution_index"] > 0:
-                status_msg += " | ⚠️ No more valid pairs!"
+                status_msg += " | ⚠️ No more unique solutions!"
             else:
-                # 1-based tier for display
                 status_msg += f" | Solution Tier: {state['solution_index'] + 1}"
 
             state["clamp_actors"] = jaws
             plt.add(jaws)
 
-        # Highlight Active Patch Green
         if len(active_indices) > 0:
             cols[active_indices] = [0, 255, 0, 255]  # Green
 
@@ -366,6 +374,13 @@ def visualize_inference(points, tris, probs, control_state):
     def slide_offset(w, e):
         state["offset"] = w.GetRepresentation().GetValue(); update_view()
 
+    # NEW SLIDERS for Vise Base
+    def slide_base_w(w, e):
+        state["base_width"] = w.GetRepresentation().GetValue(); update_view()
+
+    def slide_base_l(w, e):
+        state["base_length"] = w.GetRepresentation().GetValue(); update_view()
+
     def btn_smart(*args):
         state["post_process"] = not state["post_process"]; update_view()
 
@@ -375,20 +390,20 @@ def visualize_inference(points, tris, probs, control_state):
     def btn_load_next(*args):
         control_state["load_next"] = True; plt.close()
 
-    # NEW: Increment by 1 because we now have a list of Valid Pairs
-        # Inside visualize_inference...
-
-        # Increment by 1 because generate_clamp_actors now manages the list of unique solutions internally
     def btn_next_sol(*args):
-        state["solution_index"] += 1
-        state["show_clamp"] = True
-        update_view()
+        state["solution_index"] += 1; state["show_clamp"] = True; update_view()
 
     def btn_reset_sol(*args):
         state["solution_index"] = 0; state["show_clamp"] = True; update_view()
 
+    # Layout
     plt.add_slider(slide_thresh, 0.5, 0.99, value=0.90, pos=[(0.1, 0.05), (0.3, 0.05)], title="Confidence")
-    plt.add_slider(slide_offset, 0.0, 100.0, value=10.0, pos=[(0.4, 0.05), (0.6, 0.05)], title="Jaw Distance (mm)")
+    plt.add_slider(slide_offset, 0.0, 100.0, value=10.0, pos=[(0.4, 0.05), (0.6, 0.05)], title="Jaw Open (mm)")
+
+    # Base Dimension Sliders (Right Side)
+    plt.add_slider(slide_base_w, 50.0, 300.0, value=100.0, pos=[(0.7, 0.25), (0.9, 0.25)], title="Vise Width")
+    plt.add_slider(slide_base_l, 100.0, 500.0, value=200.0, pos=[(0.7, 0.20), (0.9, 0.20)], title="Vise Length")
+
     plt.add_button(btn_smart, states=[" Smart Fill: ON ", " Smart Fill: OFF"], c=["w", "w"], bc=["g", "r"],
                    pos=(0.8, 0.12), size=20)
     plt.add_button(btn_clamp, states=[" Show Clamp ", " Hide Clamp "], c=["w", "w"], bc=["b", "grey"], pos=(0.8, 0.08),
