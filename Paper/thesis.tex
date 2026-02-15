@@ -1,0 +1,123 @@
+\documentclass[master=ewtk]{kulemt}
+\setup{
+  title={Human-AI Co-Creation for Workplan Generation in Manufacturing: Optimizing Tool selection and Clamping strategies through Human-AI Dialogue},
+  author={Jordaan Dimitrov},
+  promotor={Prof.\,dr.\,ir.\ Dominiek Reynaerts \and Prof.\,dr.\,ir.\ Mathias Verbeke},
+  assessor={Prof.\,dr.\,ir.\ Joost Duflou \and Dr.\,ir.\ Kerim Yildirim},
+  assistant={Dr.\,ir.\ Ming Wu}}
+% Remove the "%" on the next line for generating the cover page
+%\setup{coverpageonly}
+% Remove the "%" before the next "\setup" to generate only the first pages
+% (e.g., if you are a Word user).
+%\setup{frontpagesonly}
+
+% If you want to include other LaTeX packages, do it here. 
+
+% Finally the hyperref package is used for pdf files.
+% This can be commented out for printed versions.
+\usepackage[pdfusetitle,colorlinks,plainpages=false]{hyperref}
+\usepackage[table]{xcolor} % 'table'optie is handig voor cell backgrounds
+\usepackage{xltabular}    % combinatie van longtable + tabularx
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{xltabular,enumitem} 
+\usepackage[table]{xcolor} 
+\usepackage{pdflscape}
+%%%%%%%
+% The lipsum package is used to generate random text.
+% You never need this in a real master's thesis text!
+\IfFileExists{lipsum.sty}%
+ {\usepackage{lipsum}\SetLipsumDefault{11-13}}%
+ {\newcommand{\lipsum}[1][11-13]{\par And some text: lipsum ##1.\par}}
+%%%%%%%
+\usepackage{longtable}
+%%%%%%%
+%\includeonly{chapter-n}
+\begin{document}
+
+\begin{preface}
+This is my acknowledgment to thank everyone who has kept me busy.
+I would like to thank my supervisor, my advisor, and the entire jury.
+My family has also been very supportive, of course.
+\end{preface}
+
+\tableofcontents*
+
+\begin{abstract}
+  {\color{red} This \texttt{abstract} environment provides a summary of the work, which may or may not be extensive.
+The intention is that this should be limited to 1 page.}
+
+\begin{itemize}
+	\item Autocam context, fixture planning
+	\item human expertise dependence, brittle rule based systems
+	\item aim is AI assisted clamping region detection
+	\item method used is supervised learning, feedforward NN, face/mesh level processing
+	\item training data obtained via manual labeling and parametric part generation
+	\item processing done in multiple ways, cad face extraction, discretized mesh, adaptive mesh refinement
+	\item surface/mesh information fed into NN: area; normals; outerness; opposing-surface validation; wall thickness 
+	\item constraints are physical feasibility, reachability, total clamping force (thin walls)
+	\item heavy computation via HPC cluster, training on gpu nodes, monitoring via 3 data sets (training, validation, xyz), one for tuning hyper parameters
+	\item Metrics: precision; recall; F1-like combined score; false-positive suppression since that is more dangerous than missing a solution
+	\item output gives user multiple solutions, can be ordered based on reachability, stability, etc
+	\item challenges 
+	\item future work
+	
+\end{itemize}
+
+
+\end{abstract}
+
+% A list of figures and tables is optional
+%\listoffigures
+%\listoftables
+% If there are only a few figures and tables, it is better to use the following:
+\listoffiguresandtables
+% The list of symbols is also optional.
+% This list must be created manually, e.g. as follows:
+\chapter{List of abbreviations and symbols}
+\section*{abbreviations}
+\begin{flushleft}
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabularx}{\textwidth}{@{}p{12mm}X@{}}
+    LoG   & Laplacian-of-Gaussian \\
+    MSE   & Mean Square error \\
+    PSNR  & Peak Signal-to-Noise ratio \\
+  \end{tabularx}
+\end{flushleft}
+\section*{Symbols}
+\begin{flushleft}
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabularx}{\textwidth}{@{}p{12mm}X@{}}
+    42    & ``The Answer to the Ultimate Question of Life, the Universe,
+            and Everything'' volgens de \cite{h2g2} \\
+    $c$   & Speed of light \\
+    $E$   & Energy \\
+    $m$   & Mass \\
+    $\pi$ & The number pi \\
+  \end{tabularx}
+\end{flushleft}
+
+% Now comes the main text
+\mainmatter
+
+\include{intro}
+\include{chapter-1}
+\include{chapter-2}
+% ... and so on until
+\include{chapter-3}
+\include{chapter-4}
+\include{conclusion}
+
+% If you have appendices:
+\appendixpage*          % if wanted
+\appendix
+\include{appendix-1}
+% ... and so on until
+\include{appendix-n}
+\backmatter
+% The bibliography comes after the appendices.
+% You can replace the standard "abbrv" bibliography style by another one.
+\bibliographystyle{abbrv}
+\bibliography{references}
+\include{CoC}
+\end{document}
