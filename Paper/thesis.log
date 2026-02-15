@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (MiKTeX 26.1) (preloaded format=pdflatex 2026.2.12)  15 FEB 2026 11:56
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (MiKTeX 26.1) (preloaded format=pdflatex 2026.2.12)  15 FEB 2026 16:24
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -677,11 +677,7 @@ Package: textcomp 2024/04/24 v2.1b Standard LaTeX package
 LaTeX Font Info:    Setting kulemtfpf sub-encoding to TS1/0 on input line 36.
 
 (thesis.aux (intro.aux) (chapter-1.aux) (chapter-2.aux) (chapter-3.aux)
-(chapter-4.aux
-
-LaTeX Warning: Label `cha:n' multiply defined.
-
-) (conclusion.aux) (appendix-1.aux) (appendix-n.aux) (CoC.aux))
+(chapter-4.aux) (conclusion.aux) (appendix-1.aux) (appendix-n.aux) (CoC.aux))
 \openout1 = `thesis.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 36.
@@ -733,7 +729,7 @@ Package hyperref Info: Link coloring ON on input line 36.
 \@outlinefile=\write4
 \openout4 = `thesis.out'.
 
-<logokuleng-en.pdf, id=143, 216.81pt x 99.9735pt>
+<logokuleng-en.pdf, id=147, 216.81pt x 99.9735pt>
 File: logokuleng-en.pdf Graphic file (type pdf)
 <use logokuleng-en.pdf>
 Package pdftex.def Info: logokuleng-en.pdf  used on input line 36.
@@ -801,93 +797,549 @@ Chapter 1.
 
 ]
 Chapter 2.
-) [3]
+<images/Decision tree generative.png, id=296, 442.65375pt x 441.14813pt>
+File: images/Decision tree generative.png Graphic file (type png)
+<use images/Decision tree generative.png>
+Package pdftex.def Info: images/Decision tree generative.png  used on input lin
+e 22.
+(pdftex.def)             Requested size: 309.8555pt x 308.80157pt.
+<images/variant.png, id=299, 420.06938pt x 411.03563pt>
+File: images/variant.png Graphic file (type png)
+<use images/variant.png>
+Package pdftex.def Info: images/variant.png  used on input line 41.
+(pdftex.def)             Requested size: 294.04655pt x 287.72298pt.
+[3]
+<images/deeplearningclassification.png, id=307, 892.08281pt x 404.26031pt>
+File: images/deeplearningclassification.png Graphic file (type png)
+<use images/deeplearningclassification.png>
+Package pdftex.def Info: images/deeplearningclassification.png  used on input l
+ine 65.
+(pdftex.def)             Requested size: 356.8268pt x 161.70125pt.
+ [4 <./images/Decision tree generative.png>] [5 <./images/variant.png> <./image
+s/deeplearningclassification.png>]) [6]
 \openout2 = `chapter-2.aux'.
 
- (chapter-2.tex [4
-
-
-
-
-]
+ (chapter-2.tex
 Chapter 3.
+<images/NN visualization.jpg, id=329, 1444.64719pt x 734.745pt>
+File: images/NN visualization.jpg Graphic file (type jpg)
+<use images/NN visualization.jpg>
+Package pdftex.def Info: images/NN visualization.jpg  used on input line 17.
+(pdftex.def)             Requested size: 505.6341pt x 257.1646pt.
 
-Class memoir Warning: \tref is marked deprecated and will be
-(memoir)              removed from memoir in 2026.
-(memoir)              Define your own version in the preamble. E.g. via
-(memoir)              \newcommand\tref[1]{\tablename~\ref{#1}}
-(memoir)               on input line 21.
+Overfull \hbox (107.6341pt too wide) in paragraph at lines 17--18
+ [][] 
+ []
+
+<images/pipeline faces.jpg, id=330, 1444.64719pt x 608.2725pt>
+File: images/pipeline faces.jpg Graphic file (type jpg)
+<use images/pipeline faces.jpg>
+Package pdftex.def Info: images/pipeline faces.jpg  used on input line 27.
+(pdftex.def)             Requested size: 433.3975pt x 182.48315pt.
+
+Overfull \hbox (35.3975pt too wide) in paragraph at lines 27--28
+ [][] 
+ []
+
+<images/pipeline discretized.jpg, id=331, 1443.89438pt x 490.83376pt>
+File: images/pipeline discretized.jpg Graphic file (type jpg)
+<use images/pipeline discretized.jpg>
+Package pdftex.def Info: images/pipeline discretized.jpg  used on input line 36
+.
+(pdftex.def)             Requested size: 433.17166pt x 147.25125pt.
+
+Overfull \hbox (35.17166pt too wide) in paragraph at lines 36--37
+ [][] 
+ []
+
+[7
 
 
-Class memoir Warning: \fref is marked deprecated and will be
-(memoir)              removed from memoir in 2026.
-(memoir)              Define your own version in the preamble. E.g. via
-(memoir)              \newcommand\fref[1]{\figurename~\ref{#1}}
-(memoir)               on input line 53.
 
-File: logokuleng-en.pdf Graphic file (type pdf)
-<use logokuleng-en.pdf>
-Package pdftex.def Info: logokuleng-en.pdf  used on input line 57.
-(pdftex.def)             Requested size: 216.80946pt x 99.97324pt.
-[5]) [6]
+
+ <./images/NN visualization.jpg>]
+<images/adaptivemeshrefinement.png, id=336, 271.0125pt x 228.10219pt>
+File: images/adaptivemeshrefinement.png Graphic file (type png)
+<use images/adaptivemeshrefinement.png>
+Package pdftex.def Info: images/adaptivemeshrefinement.png  used on input line 
+50.
+(pdftex.def)             Requested size: 189.70744pt x 159.67043pt.
+ [8 <./images/pipeline faces.jpg> <./images/pipeline discretized.jpg>]
+<images/Parametric modelling.png, id=341, 954.56625pt x 185.94469pt>
+File: images/Parametric modelling.png Graphic file (type png)
+<use images/Parametric modelling.png>
+Package pdftex.def Info: images/Parametric modelling.png  used on input line 67
+.
+(pdftex.def)             Requested size: 477.28197pt x 92.9721pt.
+
+Overfull \hbox (79.28197pt too wide) in paragraph at lines 67--68
+ [][] 
+ []
+
+<images/outerness.png, id=342, 210.7875pt x 203.25937pt>
+File: images/outerness.png Graphic file (type png)
+<use images/outerness.png>
+Package pdftex.def Info: images/outerness.png  used on input line 83.
+(pdftex.def)             Requested size: 147.55025pt x 142.28058pt.
+<images/opposing surface validation.jpg, id=343, 569.12625pt x 273.27094pt>
+File: images/opposing surface validation.jpg Graphic file (type jpg)
+<use images/opposing surface validation.jpg>
+Package pdftex.def Info: images/opposing surface validation.jpg  used on input 
+line 92.
+(pdftex.def)             Requested size: 398.38567pt x 191.28833pt.
+<images/wall thickness.png, id=344, 196.48407pt x 193.47281pt>
+File: images/wall thickness.png Graphic file (type png)
+<use images/wall thickness.png>
+Package pdftex.def Info: images/wall thickness.png  used on input line 103.
+(pdftex.def)             Requested size: 137.5379pt x 135.43004pt.
+[9 <./images/adaptivemeshrefinement.png> <./images/Parametric modelling.png>]
+<images/postprocessing.jpg, id=351, 1306.12968pt x 522.45187pt>
+File: images/postprocessing.jpg Graphic file (type jpg)
+<use images/postprocessing.jpg>
+Package pdftex.def Info: images/postprocessing.jpg  used on input line 119.
+(pdftex.def)             Requested size: 391.84193pt x 156.73677pt.
+
+[10 <./images/outerness.png> <./images/opposing surface validation.jpg>])
+[11 <./images/wall thickness.png> <./images/postprocessing.jpg>]
 \openout2 = `chapter-3.aux'.
 
- (chapter-3.tex
-Chapter 4.
-) [7
+ (chapter-3.tex [12
 
 
 
 
 ]
+Chapter 4.
+<images/Overfitting example.png, id=370, 532.99126pt x 358.33875pt>
+File: images/Overfitting example.png Graphic file (type png)
+<use images/Overfitting example.png>
+Package pdftex.def Info: images/Overfitting example.png  used on input line 12.
+
+(pdftex.def)             Requested size: 426.39359pt x 286.67139pt.
+
+Overfull \hbox (28.39359pt too wide) in paragraph at lines 12--13
+ [][] 
+ []
+
+<images/visualizationsurfaceprocessing.jpg, id=371, 1416.79312pt x 428.35031pt>
+
+File: images/visualizationsurfaceprocessing.jpg Graphic file (type jpg)
+<use images/visualizationsurfaceprocessing.jpg>
+Package pdftex.def Info: images/visualizationsurfaceprocessing.jpg  used on inp
+ut line 20.
+(pdftex.def)             Requested size: 425.04121pt x 128.50607pt.
+
+Overfull \hbox (27.04121pt too wide) in paragraph at lines 20--21
+ [][] 
+ []
+
+<images/traininglosssurface.png, id=372, 475.7775pt x 357.58594pt>
+File: images/traininglosssurface.png Graphic file (type png)
+<use images/traininglosssurface.png>
+Package pdftex.def Info: images/traininglosssurface.png  used on input line 26.
+
+(pdftex.def)             Requested size: 237.88815pt x 178.79253pt.
+<images/initial result discretized.png, id=373, 390.70969pt x 190.46156pt>
+File: images/initial result discretized.png Graphic file (type png)
+<use images/initial result discretized.png>
+Package pdftex.def Info: images/initial result discretized.png  used on input l
+ine 35.
+(pdftex.def)             Requested size: 273.4949pt x 133.32216pt.
+<images/micro patch solution.png, id=374, 386.19281pt x 149.05687pt>
+File: images/micro patch solution.png Graphic file (type png)
+<use images/micro patch solution.png>
+Package pdftex.def Info: images/micro patch solution.png  used on input line 42
+.
+(pdftex.def)             Requested size: 270.33311pt x 104.3391pt.
+<images/f1 score.png, id=375, 300.3722pt x 241.65282pt>
+File: images/f1 score.png Graphic file (type png)
+<use images/f1 score.png>
+Package pdftex.def Info: images/f1 score.png  used on input line 49.
+(pdftex.def)             Requested size: 270.33246pt x 217.48552pt.
+) [13] [14 <./images/Overfitting example.png> <./images/visualizationsurfacepro
+cessing.jpg>] [15 <./images/traininglosssurface.png> <./images/initial result d
+iscretized.png> <./images/micro patch solution.png>] [16 <./images/f1 score.png
+>]
 \openout2 = `chapter-4.aux'.
 
- (chapter-4.tex [8
+ (chapter-4.tex
+Chapter 5.
+) [17
 
 
 
 
 ]
-Chapter 5.
-) [9]
 \openout2 = `conclusion.aux'.
 
- (conclusion.tex [10
+ (conclusion.tex [18
 
 
 
 
 ]
 Chapter 6.
-) [11] [12
+) [19] [20
 
 
 
-] [13] [14]
+] [21] [22]
 \openout2 = `appendix-1.aux'.
 
  (appendix-1.tex
 Appendix A.
-) [15
+<images/gant chart.jpg, id=427, 1444.64719pt x 635.37375pt>
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Missing number, treated as zero.
+<to be read again> 
+                   \unhbox 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   \unhbox 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+File: images/gant chart.jpg Graphic file (type jpg)
+<use images/gant chart.jpg>
+Package pdftex.def Info: images/gant chart.jpg  used on input line 11.
+(pdftex.def)             Requested size: 0.0pt x 0.3pt.
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Undefined control sequence.
+\Gin@scaley ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Undefined control sequence.
+\Gin@scaley ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Missing = inserted for \ifdim.
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+I was expecting to see `<', `=', or `>'. Didn't.
+
+! Missing number, treated as zero.
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Undefined control sequence.
+\Gin@scaley ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Undefined control sequence.
+\Gin@scaley ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Missing = inserted for \ifdim.
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+I was expecting to see `<', `=', or `>'. Didn't.
+
+! Missing number, treated as zero.
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Missing number, treated as zero.
+<to be read again> 
+                   \hbox 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   \hbox 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
 
 
-]
+Overfull \hbox (5.17499pt too wide) detected at line 11
+\T1/lmr/m/n/10.95 7
+ []
+
+! Missing number, treated as zero.
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Undefined control sequence.
+\Gin@scalex ->0.3\add 
+                      {7}
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   {
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+! Missing number, treated as zero.
+<to be read again> 
+                   \hss 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+A number should have been here; I inserted `0'.
+(If you can't figure out why I needed to see a number,
+look up `weird error' in the index to The TeXbook.)
+
+! Illegal unit of measure (pt inserted).
+<to be read again> 
+                   \hss 
+l.11 ...s[scale=0.3\add{7}]{images/gant chart.jpg}
+                                                  
+Dimensions can be in units of em, ex, in, pt, pc,
+cm, mm, dd, cc, nd, nc, bp, or sp; but yours is a new one!
+I'll assume that you meant to say pt, for printer's points.
+To recover gracefully from this error, it's best to
+delete the erroneous units; e.g., type `2' to delete
+two letters. (See Chapter 27 of The TeXbook.)
+
+) [23
+
+
+ <./images/gant chart.jpg>]
 \openout2 = `appendix-n.aux'.
 
- (appendix-n.tex [16
+ (appendix-n.tex [24
 
 
 
 
 ]
 Appendix B.
-) [17] [18
+) [25] [26
 
 
 
 ] (thesis.bbl
 bibitemlist
-) [19
+) [27
 
 ]
 \openout2 = `CoC.aux'.
@@ -897,7 +1349,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 4--8
 
  []
 
-[20
+[28
 
 
 ]
@@ -905,7 +1357,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 35--39
 
  []
 
-[21] [22]
+[29] [30]
 Overfull \hbox (17.0pt too wide) in paragraph at lines 57--58
 [][] 
  []
@@ -920,7 +1372,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 79--80
 
  []
 
-[23]
+[31]
 Underfull \hbox (badness 1874) in paragraph at lines 100--100
 []|\T1/lmr/bx/n/10.95 Name of the
  []
@@ -1050,11 +1502,11 @@ Overfull \hbox (37.59998pt too wide) in alignment at lines 112--188
  [] [] [] 
  []
 
-ignored: Infinite glue shrinkage found in box being split [24]
-ignored: Infinite glue shrinkage found in box being split [25]
-ignored: Infinite glue shrinkage found in box being split [26]
-ignored: Infinite glue shrinkage found in box being split [27]
-ignored: Infinite glue shrinkage found in box being split [28]) [29]
+ignored: Infinite glue shrinkage found in box being split [32]
+ignored: Infinite glue shrinkage found in box being split [33]
+ignored: Infinite glue shrinkage found in box being split [34]
+ignored: Infinite glue shrinkage found in box being split [35]
+ignored: Infinite glue shrinkage found in box being split [36]) [37]
 \tf@toc=\write5
 \openout5 = `thesis.toc'.
 
@@ -1073,39 +1525,32 @@ L3 programming layer <2020/03/25>
  ***********
 
 
-LaTeX Warning: There were multiply-defined labels.
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
 
 Package rerunfilecheck Info: File `thesis.out' has not changed.
-(rerunfilecheck)             Checksum: 3D327FE587FCEF774B65791363D842CE;5112.
+(rerunfilecheck)             Checksum: 0AE9F8D5F46A23652747D9AB9526F0DD;5237.
  ) 
 Here is how much of TeX's memory you used:
- 15831 strings out of 467868
- 264776 string characters out of 5418515
- 858635 words of memory out of 5000000
- 44337 multiletter control sequences out of 15000+600000
+ 15996 strings out of 467868
+ 269974 string characters out of 5418515
+ 859458 words of memory out of 5000000
+ 44478 multiletter control sequences out of 15000+600000
  689774 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  98i,12n,107p,1480b,677s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/
-cmex10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/ams
-fonts/cm/cmmi10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/p
-ublic/amsfonts/cm/cmmi8.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts
-/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKT
-eX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/jorda/AppData/Local/Progra
-ms/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/jorda/AppData/Local
-/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/jorda/AppD
-ata/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx10.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx12.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmcsc10.pfb><C:/Users/j
-orda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmr10.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmri10.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmtt10.pfb><C:/Users/jo
-rda/AppData/Local/Programs/MiKTeX/fonts/type1/public/tex-gyre/qhvr.pfb><C:/User
-s/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/tex-gyre/qhvri.pfb>
-Output written on thesis.pdf (37 pages, 434708 bytes).
+cmmi10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/
+lmbx10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/
+lmbx12.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/
+lmcsc10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm
+/lmr10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/
+lmri10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/
+lmtt10.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public/tex
+-gyre/qhvr.pfb><C:/Users/jorda/AppData/Local/Programs/MiKTeX/fonts/type1/public
+/tex-gyre/qhvri.pfb>
+Output written on thesis.pdf (45 pages, 3423226 bytes).
 PDF statistics:
- 553 PDF objects out of 1000 (max. 8388607)
- 110 named destinations out of 1000 (max. 500000)
- 286 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 619 PDF objects out of 1000 (max. 8388607)
+ 134 named destinations out of 1000 (max. 500000)
+ 389 words of extra memory for PDF output out of 10000 (max. 10000000)
 

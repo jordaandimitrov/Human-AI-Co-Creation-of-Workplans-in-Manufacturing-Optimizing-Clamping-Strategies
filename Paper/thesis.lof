@@ -11,10 +11,28 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Generative fixture design decision tree (source)}}{4}{figure.2.1}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Variant fixture design scheme (source)}}{5}{figure.2.2}%
+\contentsline {figure}{\numberline {2.3}{\ignorespaces Deep learning classification}}{5}{figure.2.3}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {3.1}{\ignorespaces The logo of the Faculty of Engineering Science.}}{6}{figure.3.1}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Feedforward network visualization with two hidden layers}}{7}{figure.3.1}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Pipeline for surface processing}}{8}{figure.3.2}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Discretized Pipeline}}{8}{figure.3.3}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Adaptive mesh refinement}}{9}{figure.3.4}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Parametrically generating parts}}{9}{figure.3.5}%
+\contentsline {figure}{\numberline {3.6}{\ignorespaces Outerness}}{10}{figure.3.6}%
+\contentsline {figure}{\numberline {3.7}{\ignorespaces Opposing surface validation}}{10}{figure.3.7}%
+\contentsline {figure}{\numberline {3.8}{\ignorespaces Wall Thickness}}{11}{figure.3.8}%
+\contentsline {figure}{\numberline {3.9}{\ignorespaces Visualization of different solutions on the same part in post processing}}{11}{figure.3.9}%
+\addvspace {10pt}
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Overfitting example}}{14}{figure.4.1}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Visualization examples surface processing}}{14}{figure.4.2}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Visualization examples surface processing}}{15}{figure.4.3}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces First result discretized}}{15}{figure.4.4}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Illustration of micropatch solution}}{15}{figure.4.5}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces F1 score result}}{16}{figure.4.6}%
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\addvspace {10pt}
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Gant chart}}{23}{figure.A.1}%
 \addvspace {10pt}
