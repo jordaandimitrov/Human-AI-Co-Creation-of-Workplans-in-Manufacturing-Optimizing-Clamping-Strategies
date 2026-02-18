@@ -38,34 +38,35 @@ def run_debug_tool():
     print("   3/4 Computing Cylindricity Feature...")
 
     # -----------------------------
-    # FIXED CYLINDRICITY SECTION
+    # RELAXED + OUTER-MASKED CYLINDRICITY
     # -----------------------------
     part_center = np.mean(centroids, axis=0)
 
+    # radial vector & alignment
     radial_vec = np.column_stack([
         centroids[:, 0] - part_center[0],
         centroids[:, 1] - part_center[1],
         np.zeros(len(centroids))
     ])
-
     radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
     radial_unit = radial_vec / radial_norm[:, None]
-
-    # basic radial alignment
     base_cyl = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
 
-    # NEW: simple radius-smoothness penalty (NumPy-only)
+    # radius smoothness
     radius = radial_norm
     neighbor_radius = np.zeros_like(radius)
-
     for i in range(len(radius)):
-        d = np.sum((centroids - centroids[i])**2, axis=1)
+        d = np.sum((centroids - centroids[i]) ** 2, axis=1)
         nn = np.argpartition(d, 6)[:6]
         neighbor_radius[i] = np.mean(radius[nn])
 
-    smooth = np.exp(-1 * np.abs(radius - neighbor_radius))
+    smooth = np.exp(-1 * np.abs(radius - neighbor_radius))  # less sensitive
+    alpha = 0.7
 
-    cylindricity_map = base_cyl * smooth
+    # only apply cylindricity to triangles with outerness > 0.8
+    outer_mask = outerness_map > 0.8
+    cylindricity_map = np.zeros_like(base_cyl)
+    cylindricity_map[outer_mask] = base_cyl[outer_mask] * (alpha * smooth[outer_mask] + (1 - alpha))
 
     # normalize
     min_val, max_val = cylindricity_map.min(), cylindricity_map.max()
