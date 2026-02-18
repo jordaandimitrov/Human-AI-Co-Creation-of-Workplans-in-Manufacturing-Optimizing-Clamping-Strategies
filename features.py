@@ -87,6 +87,7 @@ def extract_triangle_features(stl_path):
             vectors = -c_norms
 
             try:
+                # Robust Call
                 res = tm.ray.intersects_id(
                     ray_origins=start_pts,
                     ray_directions=vectors,
@@ -104,6 +105,7 @@ def extract_triangle_features(stl_path):
                 index_tri, index_ray, locations = [], [], None
 
             if len(index_ray) > 0:
+                # Manual Max Distance Filter (Replaces max_d)
                 if locations is not None:
                     origins_for_hits = start_pts[index_ray]
                     dists = np.linalg.norm(locations - origins_for_hits, axis=1)
@@ -123,22 +125,26 @@ def extract_triangle_features(stl_path):
                     successful_rays = index_ray[is_valid_hit]
                     unique_successful_rays = np.unique(successful_rays)
 
+                    # RESTORED 0.2 WEIGHT
                     hit_accumulator[unique_successful_rays] += 0.2
 
         opposite_quality[candidate_indices] = np.clip(hit_accumulator, 0, 1.0)
 
-    # === NEW: CYLINDRICITY FEATURE ===
+    # ---------------------------------------------------------
+    # INSERTED: CYLINDRICITY (NOTHING ELSE MODIFIED)
+    # ---------------------------------------------------------
     radial_vec = np.column_stack([
         centroids[:, 0] - part_center[0],
         centroids[:, 1] - part_center[1],
         np.zeros(len(centroids))
     ])
     radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
-    radial_unit = radial_vec / radial_norm
+    radial_unit = radial_vec / radial_norm[:, None]
+
     cylindricity = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
+    # ---------------------------------------------------------
 
-
-    # 4. Assembly (now 14 features)
+    # 4. Assembly  (now 14 features)
     feats = np.zeros((len(tris), 14), dtype=np.float32)
     feats[:, 0] = areas / max_area
     feats[:, 1] = 1.0
@@ -151,6 +157,6 @@ def extract_triangle_features(stl_path):
     feats[:, 10] = edge_c / max_edge
     feats[:, 11] = outerness
     feats[:, 12] = opposite_quality
-    feats[:, 13] = cylindricity   # <--- NEW FEATURE
+    feats[:, 13] = cylindricity        # <-- NEW FEATURE
 
     return feats, tris, points

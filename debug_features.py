@@ -36,22 +36,41 @@ def run_debug_tool():
     is_elite = (outerness_map > 0.85)
 
     print("   3/4 Computing Cylindricity Feature...")
-    # same cylindricity formula as in feature extractor
+
+    # -----------------------------
+    # FIXED CYLINDRICITY SECTION
+    # -----------------------------
     part_center = np.mean(centroids, axis=0)
+
     radial_vec = np.column_stack([
         centroids[:, 0] - part_center[0],
         centroids[:, 1] - part_center[1],
         np.zeros(len(centroids))
     ])
-    radial_norm = np.linalg.norm(radial_vec) + 1e-6
-    radial_unit = radial_vec / radial_norm
 
-    cyl_map = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
-    # Smooth / relative scale: normalize to [0,1] based on elite region
-    min_val, max_val = np.percentile(cyl_map[is_elite], [5, 95])  # avoid outliers
-    cylindricity_map = np.clip((cyl_map - min_val) / (max_val - min_val), 0, 1)
+    radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
+    radial_unit = radial_vec / radial_norm[:, None]
 
-   # cylindricity_map = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
+    # basic radial alignment
+    base_cyl = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
+
+    # NEW: simple radius-smoothness penalty (NumPy-only)
+    radius = radial_norm
+    neighbor_radius = np.zeros_like(radius)
+
+    for i in range(len(radius)):
+        d = np.sum((centroids - centroids[i])**2, axis=1)
+        nn = np.argpartition(d, 6)[:6]
+        neighbor_radius[i] = np.mean(radius[nn])
+
+    smooth = np.exp(-1 * np.abs(radius - neighbor_radius))
+
+    cylindricity_map = base_cyl * smooth
+
+    # normalize
+    min_val, max_val = cylindricity_map.min(), cylindricity_map.max()
+    cylindricity_map = (cylindricity_map - min_val) / (max_val - min_val + 1e-6)
+    # -----------------------------
 
     print("   4/4 Computing Full Ray Scores (X-Ray Mode)...")
     tm = trimesh.Trimesh(vertices=mesh.points, faces=mesh.cells, process=False)
@@ -168,9 +187,9 @@ def run_debug_tool():
     def btn_cyl(*a): set_mode("cyl")
 
     plt.add_button(btn_outer, states=[" Outerness "], c=["w"], bc=["r"], pos=(0.18, 0.05), size=25)
-    plt.add_button(btn_rays, states=[" Ray Scores "], c=["w"], bc=["b"], pos=(0.42, 0.05), size=25)
-    plt.add_button(btn_mask, states=[" Elite Mask "], c=["black"], bc=["g"], pos=(0.66, 0.05), size=25)
-    plt.add_button(btn_cyl,  states=[" Cylindricity "], c=["black"], bc=["yellow"], pos=(0.90, 0.05), size=25)
+    plt.add_button(btn_rays,  states=[" Ray Scores "], c=["w"], bc=["b"], pos=(0.42, 0.05), size=25)
+    plt.add_button(btn_mask,  states=[" Elite Mask "], c=["black"], bc=["g"], pos=(0.66, 0.05), size=25)
+    plt.add_button(btn_cyl,   states=[" Cylindricity "], c=["black"], bc=["yellow"], pos=(0.90, 0.05), size=25)
 
     # Click handler unchanged
     def on_click(evt):
