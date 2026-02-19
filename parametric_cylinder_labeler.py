@@ -116,12 +116,12 @@ if __name__ == "__main__":
         mesh.shift(-cm)
 
         # Random rotation around Z
-        rotation = random.uniform(0, 360)
+        rotation = random.uniform(0, 0)
         mesh.rotate_z(rotation)
         mesh.compute_normals()
 
         # Save rotated geometry before feature extraction
-        mesh.write(save_path)
+        #mesh.write(save_path)
 
         # Cylinder-specific auto labeling
         indices = detect_cylinder_patches_with_angle(mesh)
@@ -132,7 +132,7 @@ if __name__ == "__main__":
         mesh.cellcolors = face_colors
 
         # Save colored mesh
-        mesh.write(save_path)
+        #mesh.write(save_path)
 
         # Build JSON entry
         json_key = save_path.replace("\\", "/")
