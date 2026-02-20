@@ -1,7 +1,7 @@
 \chapter{Background and related work}
 \label{cha:1}
-A chapter is a logical unit. It normally starts with an introduction, which
-you are reading now. The last topic of the chapter holds the conclusion.
+{\color{red} A chapter is a logical unit. It normally starts with an introduction, which
+you are reading now. The last topic of the chapter holds the conclusion.}
 
 \section{Current Fixture Planning Approaches}
 First comes the introduction to this topic.
@@ -16,17 +16,117 @@ First comes the introduction to this topic.
 	\item brittle with more difficult geometry
 	\item low adaptability
 \end{itemize}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.7]{images/Decision tree generative.png}
+	\caption{Generative fixture design decision tree (source)}
+	\label{fig:generative}
+\end{figure}
+
+\subsection{Case based variant fixture design}
+\begin{itemize}
+	\item Group technology classification (eg opitz)
+	\item case library of prior part solutions
+	\item similarity search
+	\item adaptation step
+	\item dataset quality determines performance
+	\item limited innovation because biased toward historical design, unless adaptation step is very sophisticated
+	\item adaptation hard for new features
+	\item schematic \ref{fig:variant}
+	 
+	 
+	 \begin{figure}
+	 	\centering
+	 	\includegraphics[scale=0.7]{images/variant.png}
+	 	\caption{Variant fixture design scheme (source)}
+	 	\label{fig:variant}
+	 \end{figure}
+	 
+	 
+	 
+\end{itemize}
+
 \section{AI in manufacturing}
-First we start with equation~\ref{eq:1} after this paragraph.
-\begin{equation}
-  \label{eq:1}
-  A = \pi r^2
-\end{equation}
+\subsection{General role of AI in manufacturing}
+\begin{itemize}
+	\item data driven optimization
+	\item reducing human dependency
+\end{itemize}
+\subsection{AI for CAD/CAM applications}
+\begin{itemize}
+	\item feature/pattern recognition
+	\item automatic toolpath generation
+	\item geometric classification (paper from presentation) \ref{fig:deeplearningclassification}
+\end{itemize}
+
+ \begin{figure}
+	\centering
+	\includegraphics[scale=0.4]{images/deeplearningclassification.png}
+	\caption{Deep learning classification}
+	\label{fig:deeplearningclassification}
+\end{figure}
 
 
-\subsection{Another item}
+\subsection{Motivation for AI based methods}
+\begin{itemize}
+	\item abstraction beyond hard coded rules
+	\item ability to handle many geometric inputs without breaking (robustness)
+	\item probabilistic prediction
+	\end{itemize}
 
+\subsection{Challenges \& Limitations}
+\begin{itemize}
+	\item large labeled dataset needed
+	\item computational cost
+	\item explainibility issues (black box)
+	\item safety concerns with decision making (liability?)
+\end{itemize}
+\subsection{Trends in Industry}
+\begin{itemize}
+	\item Move toward hybrid human-AI system, rather than fully autonomous decision making
+	\item digital twins and AI monitoring
+	\item predictive maintenance
+\end{itemize}
+
+\section{Different CAD representation models}
+\begin{itemize}
+	\item BREP
+	\item voxel
+	\item mesh (stl)
+	\item point cloud
+	\item back this up with literature and give pros and cons of each, i can even reference the virtual product development course
+\end{itemize}
+\section{Clamping methods}
+\subsection{Straight Vise}
+
+ \begin{figure}
+	\centering
+	\includegraphics[scale=0.4]{images/Vise.png}
+	\caption{Vise}
+	\label{fig:vise}
+\end{figure}
+
+
+\subsection{Double V block}
+ \begin{figure}
+	\centering
+	\includegraphics[scale=0.4]{images/doubleV.jpg}
+	\caption{V block double}
+	\label{fig:Vblockdouble}
+\end{figure}
+
+\subsection{V block + flat}
+ \begin{figure}
+	\centering
+	\includegraphics[scale=0.4]{images/V plus flat.jpg}
+	\caption{V block + Flat}
+	\label{fig:Vblockflat}
+\end{figure}
 \section{Conclusion}
-The final section of the chapter gives an overview of the important results
-of this chapter. This implies that the introductory chapter and the
-concluding chapter don't need a conclusion
+\begin{itemize}
+	\item classical methods rigid, brittle and have limited adaptability
+	\item ai enables datadriven reasoning, robustness, abstraction, probablistic outputs
+	\item but has its challenges such as data requirements, computational cost, explainability, safety
+	\item industry trend: hybrid workflow
+\end{itemize}

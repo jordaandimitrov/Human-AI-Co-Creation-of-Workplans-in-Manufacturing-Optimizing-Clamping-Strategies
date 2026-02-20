@@ -7,17 +7,27 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from multiprocessing import Pool, cpu_count
 import random
-import copy
+import argparse
 
 # IMPORT THE SHARED FEATURES MODULE
 import features
 
-# CONFIG
-WINNING_WEIGHT = 2.0
-WINNING_LR = 1e-4
-EPOCHS = 100
-BATCH_SIZE = 8192
-PATIENCE = 15
+# ==========================================
+# 0. ARGPARSE CONFIG
+# ==========================================
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train clamp classifier")
+
+    parser.add_argument("--winning_lr", type=float, default=1e-2,
+                        help="Learning rate for optimizer")
+    parser.add_argument("--winning_weight", type=float, default=5.0,
+                        help="Positive class weight for BCEWithLogitsLoss")
+    parser.add_argument("--epochs", type=int, default=100,
+                        help="Number of training epochs")
+    parser.add_argument("--patience", type=int, default=100,
+                        help="Early stopping patience")
+
+    return parser.parse_args()
 
 
 # ==========================================
@@ -29,7 +39,6 @@ def load_single_part_wrapper(args):
     if not os.path.exists(path):
         return None
     try:
-        # Call the optimized feature extractor
         feats, _, _ = features.extract_triangle_features(path)
 
         # Parse labels
@@ -60,7 +69,7 @@ class FlatTriangleDataset(Dataset):
             self.X = np.vstack(all_feats)
             self.Y = np.vstack(all_labels)
         else:
-            self.X = np.zeros((0, 13), dtype=np.float32)
+            self.X = np.zeros((0, 14), dtype=np.float32)
             self.Y = np.zeros((0, 2), dtype=np.float32)
 
     def __len__(self):
@@ -70,10 +79,8 @@ class FlatTriangleDataset(Dataset):
         x = self.X[idx].copy()
         y = self.Y[idx]
         if self.augment_rot:
-            # Random Z-rotation augmentation on features (Normals x, y)
             angle = np.random.uniform(0, 2 * np.pi)
             c, s = np.cos(angle), np.sin(angle)
-            # Rotate Normals (indices 2 and 3)
             nx = x[2] * c - x[3] * s
             ny = x[2] * s + x[3] * c
             x[2], x[3] = nx, ny
@@ -81,24 +88,18 @@ class FlatTriangleDataset(Dataset):
 
 
 # ==========================================
-# 3. MODEL (13 Dims)
+# 3. MODEL (14 Dims)
 # ==========================================
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=13, hidden_dim=128, out_dim=2):
+    def __init__(self, in_dim=14, hidden_dim=64, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            #nn.Dropout(0.2),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            #nn.Dropout(0.2),
             nn.Linear(hidden_dim, out_dim)
         )
 
@@ -110,14 +111,20 @@ class ClampSupportNet(nn.Module):
 # 4. MAIN
 # ==========================================
 if __name__ == "__main__":
-    # Settings
-    labels_path = "training_set/all_part_labels.json"
-    model_save_path = "separation_model_13dim.pth"
+    args = parse_args()
 
-    # Hardware Check
+    WINNING_LR = args.winning_lr
+    WINNING_WEIGHT = args.winning_weight
+    EPOCHS = args.epochs
+    PATIENCE = args.patience
+
+    labels_path = "training_set/all_part_labels.json"
+    model_save_path = "separation_model_14dim.pth"
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_cores = 8  # As per your cluster specs
+    num_cores = 8
     print(f"🚀 Running on {device} with {num_cores} CPU cores for loading.")
+    print(f"⚙️ Params → LR={WINNING_LR}, Weight={WINNING_WEIGHT}, Epochs={EPOCHS}, Patience={PATIENCE}")
 
     # Load JSON
     if not os.path.exists(labels_path):
@@ -128,7 +135,6 @@ if __name__ == "__main__":
         all_labels = json.load(f)
 
     # 1. PARALLEL LOAD
-    # Create list of tasks
     tasks = [(path, lbl) for path, lbl in all_labels.items()]
 
     print(f"Starting parallel feature extraction on {len(tasks)} files...")
@@ -143,10 +149,11 @@ if __name__ == "__main__":
     random.shuffle(parts)
     split = int(0.8 * len(parts))
 
-    train_ds = FlatTriangleDataset(parts[:split], augment_rot=True)
+    train_ds = FlatTriangleDataset(parts[:split], augment_rot=False) #set to false to test memorization
     val_ds = FlatTriangleDataset(parts[split:], augment_rot=False)
 
     # 3. LOADERS
+    BATCH_SIZE = 8192
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,
                               num_workers=4, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False,
@@ -155,7 +162,9 @@ if __name__ == "__main__":
     # 4. TRAIN
     model = ClampSupportNet().to(device)
     optimizer = optim.Adam(model.parameters(), lr=WINNING_LR)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([WINNING_WEIGHT, WINNING_WEIGHT]).to(device))
+    criterion = nn.BCEWithLogitsLoss(
+        pos_weight=torch.tensor([WINNING_WEIGHT, WINNING_WEIGHT]).to(device)
+    )
 
     best_f1 = 0.0
     patience_counter = 0
@@ -178,9 +187,8 @@ if __name__ == "__main__":
             for X, y in val_loader:
                 X, y = X.to(device), y.to(device)
                 probs = torch.sigmoid(model(X))
-                preds = (probs > 0.5).float()
+                preds = (probs > 0.3).float() #0.5
 
-                # Metrics for Class 0 (Clamp)
                 y_c = y[:, 0]
                 p_c = preds[:, 0]
                 tp += ((p_c == 1) & (y_c == 1)).sum().item()

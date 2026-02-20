@@ -270,6 +270,7 @@ def extract_triangle_features(stl_path):
     feats[:, 10] = edge_c / max_edge
     feats[:, 11] = outerness
     feats[:, 12] = opposite_quality
+    feats[:, 13] = cylindricity        # <-- NEW FEATURE
 
     # NEW (4)
     feats[:, 13] = edge_frag

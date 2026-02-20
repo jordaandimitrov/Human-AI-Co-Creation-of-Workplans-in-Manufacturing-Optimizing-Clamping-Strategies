@@ -11,10 +11,31 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Generative fixture design decision tree (source)}}{4}{figure.2.1}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Variant fixture design scheme (source)}}{5}{figure.2.2}%
+\contentsline {figure}{\numberline {2.3}{\ignorespaces Deep learning classification}}{5}{figure.2.3}%
+\contentsline {figure}{\numberline {2.4}{\ignorespaces Vise}}{7}{figure.2.4}%
+\contentsline {figure}{\numberline {2.5}{\ignorespaces V block double}}{7}{figure.2.5}%
+\contentsline {figure}{\numberline {2.6}{\ignorespaces V block + Flat}}{8}{figure.2.6}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {3.1}{\ignorespaces The logo of the Faculty of Engineering Science.}}{6}{figure.3.1}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Feedforward network visualization with two hidden layers}}{9}{figure.3.1}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Pipeline for surface processing}}{10}{figure.3.2}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Discretized Pipeline}}{10}{figure.3.3}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Adaptive mesh refinement}}{11}{figure.3.4}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Parametrically generating parts}}{11}{figure.3.5}%
+\contentsline {figure}{\numberline {3.6}{\ignorespaces Outerness}}{12}{figure.3.6}%
+\contentsline {figure}{\numberline {3.7}{\ignorespaces Opposing surface validation}}{12}{figure.3.7}%
+\contentsline {figure}{\numberline {3.8}{\ignorespaces Wall Thickness}}{13}{figure.3.8}%
+\contentsline {figure}{\numberline {3.9}{\ignorespaces Visualization of different solutions on the same part in post processing}}{13}{figure.3.9}%
+\addvspace {10pt}
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Overfitting example}}{16}{figure.4.1}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Visualization examples surface processing}}{16}{figure.4.2}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Visualization examples surface processing}}{17}{figure.4.3}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces First result discretized}}{17}{figure.4.4}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Illustration of micropatch solution}}{17}{figure.4.5}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces F1 score result}}{18}{figure.4.6}%
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\addvspace {10pt}
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Gant chart}}{25}{figure.A.1}%
 \addvspace {10pt}

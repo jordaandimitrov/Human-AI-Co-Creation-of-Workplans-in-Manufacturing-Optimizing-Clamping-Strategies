@@ -1,66 +1,126 @@
 \chapter{Methodology}
 \label{cha:2}
 
-\section{Surface processing}
+\section{Surface processing pipeline}
 
-\subsection{An item}
-A master's thesis is never an isolated work. This means that your text must
-contain references. On-line documents\cite{wiki} as well as
-books\cite{pratchett06:_good_omens} can be referenced.
-
-Usually a text also contains inline formulas (\(\sin^2\eta + \cos^2\eta = 1\))
-or formulas as separate equations.
-\begin{equation}
-  \sigma(t) = \frac{1}{\sqrt{2\pi}} \int_0^t e^{-x^2/2} dx 
-\end{equation}
-
+\begin{itemize}
+	\item Cad model is input
+	\item extraction surfaces 
+	\item filtering out irrelevant geometry?
+	\item computation of geometric descriptors (normals, curvature, area etc)
+	\end{itemize}
+	
+	
+	
+	\begin{figure}
+		\centering
+		\includegraphics[scale=0.35]{images/NN visualization.jpg}
+		\caption{Feedforward network visualization with two hidden layers}
+		\label{fig:NNvisualization}
+	\end{figure}
+	
+	
+	
+	
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.3]{images/pipeline faces.jpg}
+	\caption{Pipeline for surface processing}
+	\label{fig:surfacepipeline}
+\end{figure}
 
 
 \section{Discretized Geometry Processing}
-Tables are used to present data neatly arranged. A table is normally
-not a spreadsheet! Compare \tref{tab:wrong} en \tref{tab:ok}: which table do
-you prefer?
-
-\begin{table}
-  \centering
-  \begin{tabular}{||l|lr||} \hline
-    gnats     & gram      & \$13.65 \\ \cline{2-3}
-              & each      & .01 \\ \hline
-    gnu       & stuffed   & 92.50 \\ \cline{1-1} \cline{3-3}
-    emu       &           & 33.33 \\ \hline
-    armadillo & frozen    & 8.99 \\ \hline
-  \end{tabular}
-  \caption{A table with the wrong layout.}
-  \label{tab:wrong}
-\end{table}
-
-\begin{table}
-  \centering
-  \begin{tabular}{@{}llr@{}} \toprule
-    \multicolumn{2}{c}{Item} \\ \cmidrule(r){1-2}
-    Animal    & Description & Price (\$)\\ \midrule
-    Gnat      & per gram    & 13.65 \\
-              & each        & 0.01 \\
-    Gnu       & stuffed     & 92.50 \\
-    Emu       & stuffed     & 33.33 \\
-    Armadillo & frozen      & 8.99 \\ \bottomrule
-  \end{tabular}
-  \caption{A table with the correct layout.}
-  \label{tab:ok}
-\end{table}
-
-\section{Output Interpretation}
-Figures are used to add illustrations to the text. The \fref{fig:logo} shows
-the KU~Leuven logo as an illustration.
 \begin{figure}
 	\centering
-	\includegraphics{logokuleng-en}
-	\caption{The logo of the Faculty of Engineering Science.}
-	\label{fig:logo}
+	\includegraphics[scale=0.3]{images/pipeline discretized.jpg}
+	\caption{Discretized Pipeline}
+	\label{fig:discretized pipeline}
 \end{figure}
 
+\begin{itemize}
+	\item conversion of brep surfaces into discretized mesh
+	\item adaptive mesh refinement
+	\item computationally much heavier
+	\item physical contraints into loss function: net clamping force zero, patch size constraint to prevent isloated micro triangles
+	\item more uncertainty
+\end{itemize}
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.7]{images/adaptivemeshrefinement.png}
+	\caption{Adaptive mesh refinement}
+	\label{fig:adaptive mesh }
+\end{figure}
+
+\section{Scaling model}
+
+\begin{itemize}
+	\item HPC cluster (reference them as they ask on their website)
+	\item optimize model to run on GPU node (parallelization)
+	\item parametric modeling to create a large number of parts
+	\item used Blender with base part and modifications such as rotation scaling holes chamfers etc
+\end{itemize}
+
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.5]{images/Parametric modelling.png}
+	\caption{Parametrically generating parts}
+	\label{fig:parametric modelling}
+\end{figure}
+
+
+
+\section{Feature enrichment}
+\begin{itemize}
+\item goal is to capture more geometric information to feed into model, therefore the following features were added
+\end{itemize}
+
+\subsection{Outerness}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.7]{images/outerness.png}
+	\caption{Outerness}
+	\label{fig:outerness}
+\end{figure}
+
+\subsection{Opposing surface validation}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.7]{images/opposing surface validation.jpg}
+	\caption{Opposing surface validation}
+	\label{fig:opposing surface validation}
+\end{figure}
+
+
+\subsection{Wall thickness}
+
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.7]{images/wall thickness.png}
+	\caption{Wall Thickness}
+	\label{fig:wall thickness}
+\end{figure}
+
+
+\section{Post processing}
+\begin{itemize}
+	\item AI model outputs a single colored region containing multiple solutions
+	\item goal is to extract the different solutions and rank them based on feasibility, reachability, stability etcand provide a visualization
+	\item The goal is not to automatically choose the best solution, it is a tool to help the process planner or operator by providing a suggestion which he/she should approve
+\end{itemize}
+
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=0.3]{images/postprocessing.jpg}
+	\caption{Visualization of different solutions on the same part in post processing}
+	\label{fig:postprocessing}
+\end{figure}
+
+
 \section{Conclusion}
-The final section of the chapter gives an overview of the important results
-of this chapter. This implies that the introductory chapter and the
-concluding chapter don't need a conclusion.
 
