@@ -15,7 +15,6 @@ SIDE_NORMAL_THRESHOLD = 0.2      # |nz| < threshold for side faces
 OUTPUT_DIR = "training_set"
 JSON_OUT = os.path.join(OUTPUT_DIR, "all_part_labels.json")
 
-
 # ----------------------------------------------------------------------------------
 # HELPERS
 # ----------------------------------------------------------------------------------
