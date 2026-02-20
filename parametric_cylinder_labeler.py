@@ -12,8 +12,8 @@ import random
 # ----------------------------------------------------------------------------------
 ANGLE_TOLERANCE_DEG = 10         # tolerance for angle windows around ±45°
 SIDE_NORMAL_THRESHOLD = 0.2      # |nz| < threshold for side faces
-OUTPUT_DIR = "training_set_cylinders"
-JSON_OUT = os.path.join(OUTPUT_DIR, "cylinder_labels.json")
+OUTPUT_DIR = "training_set"
+JSON_OUT = os.path.join(OUTPUT_DIR, "all_part_labels.json")
 
 
 # ----------------------------------------------------------------------------------
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
         # Show in viewer
         vp.at(i).show(mesh, title=f"#{i} {fname}", axes=0)
-        vp.at(i).add(Text2D(f"Rot: {rotation:.0f}°", pos="bottom-left", c="black", s=0.8))
+        #vp.at(i).add(Text2D(f"Rot: {rotation:.0f}°", pos="bottom-left", c="black", s=0.8))
 
     print("\nAll parts processed. Close the viewer to save JSON.")
     vp.interactive()
