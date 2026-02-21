@@ -19,7 +19,7 @@ JSON_OUT = os.path.join(OUTPUT_DIR, "all_part_labels.json")
 # HELPERS
 # ----------------------------------------------------------------------------------
 
-def detect_cylinder_patches_with_angle(mesh, separation_deg=90, angle_tol_deg=10):
+def detect_cylinder_patches_with_angle(mesh, rotation_deg=0, separation_deg=90, angle_tol_deg=10):
     """
     Detect two long contact strips on the same half of a cylinder.
     Separation (in deg) defines the angle between the patches.
@@ -31,9 +31,11 @@ def detect_cylinder_patches_with_angle(mesh, separation_deg=90, angle_tol_deg=10
     # Angle of each face normal projected into XY plane
     angles = np.arctan2(ny, nx)
     angles = (angles + 2*np.pi) % (2*np.pi)   # → [0, 2π]
+    rotation_rad = np.deg2rad(rotation_deg)
 
     # Choose base contact angle (center of one strip)
     base_angle = np.pi / 4           # 45°, same orientation as before
+    base_angle = (base_angle  + rotation_rad) % (2*np.pi)         # 45°, same orientation as before
 
     # Separation between the two strips
     sep = np.deg2rad(separation_deg)
@@ -115,7 +117,7 @@ if __name__ == "__main__":
         mesh.shift(-cm)
 
         # Random rotation around Z
-        rotation = random.uniform(0, 0)
+        rotation = random.uniform(0, 360)
         mesh.rotate_z(rotation)
         mesh.compute_normals()
 
@@ -123,7 +125,7 @@ if __name__ == "__main__":
         #mesh.write(save_path)
 
         # Cylinder-specific auto labeling
-        indices = detect_cylinder_patches_with_angle(mesh)
+        indices = detect_cylinder_patches_with_angle(mesh, rotation_deg=rotation)
 
         # Color faces
         face_colors = np.full((mesh.ncells, 3), 200, dtype=np.uint8)
@@ -131,7 +133,7 @@ if __name__ == "__main__":
         mesh.cellcolors = face_colors
 
         # Save colored mesh
-        #mesh.write(save_path)
+        mesh.write(save_path)
 
         # Build JSON entry
         json_key = save_path.replace("\\", "/")
@@ -142,7 +144,7 @@ if __name__ == "__main__":
 
         # Show in viewer
         vp.at(i).show(mesh, title=f"#{i} {fname}", axes=0)
-        #vp.at(i).add(Text2D(f"Rot: {rotation:.0f}°", pos="bottom-left", c="black", s=0.8))
+        vp.at(i).add(Text2D(f"Rot: {rotation:.0f}°", pos="bottom-left", c="black", s=0.8))
 
     print("\nAll parts processed. Close the viewer to save JSON.")
     vp.interactive()

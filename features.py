@@ -3,6 +3,150 @@ import trimesh
 from vedo import Mesh
 
 
+def aaaacompute_cylindricity(centroids, normals, outerness_map, radius=None, outerness_thresh=0.85):
+    """
+    Compute a strict Z-axis cylinder score per triangle.
+    Triangles must:
+      1. Be outer faces (outerness >= threshold)
+      2. Have normals roughly pointing radially outward
+      3. Be mostly vertical (normals not along Z)
+      4. Be close to expected radius (optional)
+
+    Parameters:
+        centroids       : (N,3) array of triangle centroids
+        normals         : (N,3) array of triangle normals
+        outerness_map   : (N,) array of outerness per triangle
+        radius          : optional expected cylinder radius
+        outerness_thresh: minimum outerness to consider a triangle
+
+    Returns:
+        cylindricity : (N,) array in [0,1], 1 = perfect cylinder side
+    """
+    N = len(centroids)
+    cylindricity = np.zeros(N, dtype=np.float32)
+
+    # Step 1: Outerness filter
+    eligible = outerness_map >= outerness_thresh
+    if not np.any(eligible):
+        return cylindricity  # nothing to score
+
+    # Step 2: Radial vectors from Z-axis
+    xy = centroids[:, :2]
+    center_xy = xy.mean(axis=0)
+    radial_vec = xy - center_xy
+    radial_len = np.linalg.norm(radial_vec, axis=1) + 1e-6
+    radial_unit = radial_vec / radial_len[:, None]
+
+    # Step 3: Normals XY projection and verticality
+    normals_xy = normals[:, :2]
+    norm_len = np.linalg.norm(normals_xy, axis=1) + 1e-6
+    normals_xy_unit = normals_xy / norm_len[:, None]
+
+    verticality = 1.0 - np.abs(normals[:, 2])  # 1 = mostly vertical, 0 = along Z
+
+    # Step 4: Radial alignment (cosine between normal XY and radial vector)
+    radial_alignment = np.einsum("ij,ij->i", normals_xy_unit, radial_unit)
+    radial_alignment = np.clip(radial_alignment, 0, 1)
+
+    # Step 5: Optional radius check
+    if radius is not None:
+        radial_error = np.abs(radial_len - radius) / (radius + 1e-6)
+        radius_score = np.exp(-5 * radial_error)
+    else:
+        radius_score = np.ones(N, dtype=np.float32)
+
+    # Step 6: Combine scores for eligible triangles
+    score = radial_alignment * verticality * radius_score
+    score[~eligible] = 0.0  # zero-out ineligible triangles
+
+    # Step 7: Clip final score
+    cylindricity = np.clip(score, 0, 1).astype(np.float32)
+
+    return cylindricity
+
+def compute_cylindricity(centroids, normals, outerness_map, radius=None, outerness_thresh=0.85, max_cv=0.15):
+    """
+    Compute a strict Z-axis cylinder score per triangle.
+    Triangles must:
+      1. Be outer faces (outerness >= threshold)
+      2. Have normals roughly pointing radially outward
+      3. Be mostly vertical (normals not along Z)
+      4. Be close to expected radius (optional)
+      5. Belong to a shape with a mostly constant radius (rejects boxes)
+
+    Parameters:
+        centroids       : (N,3) array of triangle centroids
+        normals         : (N,3) array of triangle normals
+        outerness_map   : (N,) array of outerness per triangle
+        radius          : optional expected cylinder radius
+        outerness_thresh: minimum outerness to consider a triangle
+        max_cv          : maximum allowed variation in radius (Standard Dev / Mean) to not be penalized
+
+    Returns:
+        cylindricity : (N,) array in [0,1], 1 = perfect cylinder side
+    """
+    N = len(centroids)
+    cylindricity = np.zeros(N, dtype=np.float32)
+
+    # Step 1: Outerness filter
+    eligible = outerness_map >= outerness_thresh
+    if not np.any(eligible):
+        return cylindricity  # nothing to score
+
+    # Step 2: Radial vectors from Z-axis
+    xy = centroids[:, :2]
+    center_xy = xy.mean(axis=0)
+    radial_vec = xy - center_xy
+    radial_len = np.linalg.norm(radial_vec, axis=1) + 1e-6
+    radial_unit = radial_vec / radial_len[:, None]
+
+    # Step 3: Normals XY projection and verticality
+    normals_xy = normals[:, :2]
+    norm_len = np.linalg.norm(normals_xy, axis=1) + 1e-6
+    normals_xy_unit = normals_xy / norm_len[:, None]
+
+    verticality = 1.0 - np.abs(normals[:, 2])  # 1 = mostly vertical, 0 = along Z
+
+    # Step 4: Radial alignment (cosine between normal XY and radial vector)
+    radial_alignment = np.einsum("ij,ij->i", normals_xy_unit, radial_unit)
+    radial_alignment = np.clip(radial_alignment, 0, 1)
+
+    # FIX 1: Exponentiate to harshly penalize the flat, off-center faces of a box
+    radial_alignment = radial_alignment ** 4
+
+    # FIX 2: Box-penalty based on radius variance
+    # A cylinder has a constant radius. A box's radius fluctuates.
+    candidate_mask = eligible & (verticality > 0.8)
+    box_penalty = 1.0
+
+    if np.any(candidate_mask):
+        valid_radii = radial_len[candidate_mask]
+        radius_mean = np.mean(valid_radii)
+        radius_std = np.std(valid_radii)
+        cv = radius_std / (radius_mean + 1e-6)  # Coefficient of Variation
+
+        # If the CV is high (radius fluctuates a lot), scale down the score.
+        # A perfect cylinder has CV ~ 0. A square box has CV ~ 0.12 - 0.15.
+        if cv > (max_cv * 0.33):
+            # Smoothly drop the penalty to 0 as it approaches max_cv
+            box_penalty = np.clip(1.0 - (cv - (max_cv * 0.33)) / (max_cv * 0.67), 0.0, 1.0)
+
+    # Step 5: Optional radius check
+    if radius is not None:
+        radial_error = np.abs(radial_len - radius) / (radius + 1e-6)
+        radius_score = np.exp(-5 * radial_error)
+    else:
+        radius_score = np.ones(N, dtype=np.float32)
+
+    # Step 6: Combine scores for eligible triangles
+    score = radial_alignment * verticality * radius_score * box_penalty
+    score[~eligible] = 0.0  # zero-out ineligible triangles
+
+    # Step 7: Clip final score
+    cylindricity = np.clip(score, 0, 1).astype(np.float32)
+
+    return cylindricity
+
 def compute_outerness(mesh, centroids):
     try:
         tm_mesh = trimesh.Trimesh(vertices=mesh.points, faces=mesh.cells, process=False)
@@ -141,7 +285,10 @@ def extract_triangle_features(stl_path):
     radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
     radial_unit = radial_vec / radial_norm[:, None]
 
-    cylindricity = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
+
+
+    cylindricity = compute_cylindricity(centroids, normals, outerness)
+    #cylindricity = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
     # ---------------------------------------------------------
 
     # 4. Assembly  (now 14 features)

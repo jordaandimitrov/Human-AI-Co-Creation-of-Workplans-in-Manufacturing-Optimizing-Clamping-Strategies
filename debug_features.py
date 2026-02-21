@@ -3,10 +3,16 @@ import trimesh
 from vedo import Mesh, Plotter, Text2D, Line, Points, Arrow
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
-
+import features
 # --- IMPORT SHARED LOGIC ---
 try:
     from features import compute_outerness
+except ImportError:
+    print("❌ ERROR: Could not find 'features.py'. Ensure it's in the same folder.")
+    exit()
+
+try:
+    from features import compute_cylindricity
 except ImportError:
     print("❌ ERROR: Could not find 'features.py'. Ensure it's in the same folder.")
     exit()
@@ -36,68 +42,7 @@ def run_debug_tool():
     is_elite = (outerness_map > 0.85)
 
     print("   3/4 Computing Cylindricity Feature...")
-
-    # -----------------------------
-    # RELAXED + OUTER-MASKED + CURVATURE-AWARE CYLINDRICITY
-    # -----------------------------
-    part_center = np.mean(centroids, axis=0)
-
-    # radial vector & alignment
-    radial_vec = np.column_stack([
-        centroids[:, 0] - part_center[0],
-        centroids[:, 1] - part_center[1],
-        np.zeros(len(centroids))
-    ])
-    radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
-    radial_unit = radial_vec / radial_norm[:, None]
-    base_cyl = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
-
-    # radius smoothness
-    radius = radial_norm
-    neighbor_radius = np.zeros_like(radius)
-    for i in range(len(radius)):
-        d = np.sum((centroids - centroids[i]) ** 2, axis=1)
-        nn = np.argpartition(d, 6)[:6]
-        neighbor_radius[i] = np.mean(radius[nn])
-
-    smooth = np.exp(-3 * np.abs(radius - neighbor_radius))  # relaxed smoothing
-    alpha = 0.7
-
-    # compute rough curvature to suppress flat triangles
-    curvature = np.zeros(len(normals), dtype=np.float32)
-    for i in range(len(normals)):
-        dists = np.sum((centroids - centroids[i]) ** 2, axis=1)
-        nn = np.argpartition(dists, 6)[:6]
-        neighbor_norms = normals[nn]
-        curvature[i] = np.mean(np.linalg.norm(neighbor_norms - normals[i], axis=1))
-
-    # only apply cylindricity to triangles with outerness > 0.8
-    outer_mask = outerness_map > 0.8
-    cylindricity_map = np.zeros_like(base_cyl)
-
-    # compute curvature
-    curvature = np.zeros(len(normals), dtype=np.float32)
-    for i in range(len(normals)):
-        dists = np.sum((centroids - centroids[i]) ** 2, axis=1)
-        nn = np.argpartition(dists, 12)[:12]  # more neighbors
-        neighbor_norms = normals[nn]
-        curvature[i] = np.mean(np.linalg.norm(neighbor_norms - normals[i], axis=1))
-
-    # relax curvature
-    k = 5.0
-    curvature_relaxed = 1 - np.exp(-k * curvature)  # exponential relaxation
-    alpha_curv = 0.7
-    curvature_final = alpha_curv * curvature_relaxed + (1 - alpha_curv)
-
-    # multiply by cylindricity
-    cylindricity_map[outer_mask] = base_cyl[outer_mask] * (alpha * smooth[outer_mask] + (1 - alpha)) * curvature_final[
-        outer_mask]
-
-
-
-    # normalize
-    min_val, max_val = cylindricity_map.min(), cylindricity_map.max()
-    cylindricity_map = (cylindricity_map - min_val) / (max_val - min_val + 1e-6)
+    cylindricity_map = compute_cylindricity(centroids, normals, outerness_map)
     # -----------------------------
 
     print("   4/4 Computing Full Ray Scores (X-Ray Mode)...")
