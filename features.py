@@ -217,6 +217,11 @@ def extract_triangle_features(stl_path):
     # ---------------------------------------------------------
     # INSERTED: CYLINDRICITY (NOTHING ELSE MODIFIED)
     # ---------------------------------------------------------
+
+
+
+    cylindricity = compute_cylindricity(centroids, normals, outerness)
+
     radial_vec = np.column_stack([
         centroids[:, 0] - part_center[0],
         centroids[:, 1] - part_center[1],
@@ -225,14 +230,33 @@ def extract_triangle_features(stl_path):
     radial_norm = np.linalg.norm(radial_vec, axis=1) + 1e-6
     radial_unit = radial_vec / radial_norm[:, None]
 
+    # ---------------------------------------------------------
+    # NEW FEATURE: Relative Angle (The Rotation Compass)
+    # ---------------------------------------------------------
+    # Find the "main feature" (e.g., holes, flats).
+    # Low cylindricity + high outerness = cutouts on the boundary.
+    feature_mask = (cylindricity < 0.5) & (outerness > 0.5)
+    relative_angle = np.zeros(len(centroids), dtype=np.float32)
 
+    if np.any(feature_mask):
+        # 1. Find the 2D direction of the hole relative to the part center
+        feature_xy = centroids[feature_mask, :2] - part_center[:2]
+        mean_feature_vec = np.mean(feature_xy, axis=0)
+        vec_length = np.linalg.norm(mean_feature_vec) + 1e-6
+        feature_dir_2d = mean_feature_vec / vec_length
 
-    cylindricity = compute_cylindricity(centroids, normals, outerness)
-    #cylindricity = np.abs(np.einsum("ij,ij->i", radial_unit, normals)).astype(np.float32)
+        # 2. Get the 2D radial direction of every triangle
+        # (radial_unit was already calculated earlier in your script)
+        triangle_dirs_2d = radial_unit[:, :2]
+
+        # 3. Dot product gives the cosine of the angle to the hole
+        # 1.0 = Facing hole, 0.0 = 90 deg off, -1.0 = Opposite hole
+        relative_angle = np.dot(triangle_dirs_2d, feature_dir_2d)
     # ---------------------------------------------------------
 
-    # 4. Assembly  (now 14 features)
-    feats = np.zeros((len(tris), 14), dtype=np.float32)
+
+    # 4. Assembly  (now 15 features)
+    feats = np.zeros((len(tris), 15), dtype=np.float32)
     feats[:, 0] = areas / max_area
     feats[:, 1] = 1.0
     feats[:, 2:5] = normals
@@ -245,5 +269,6 @@ def extract_triangle_features(stl_path):
     feats[:, 11] = outerness
     feats[:, 12] = opposite_quality
     feats[:, 13] = cylindricity        # <-- NEW FEATURE
+    feats[:, 14] = relative_angle        # <-- NEW FEATURE
 
     return feats, tris, points

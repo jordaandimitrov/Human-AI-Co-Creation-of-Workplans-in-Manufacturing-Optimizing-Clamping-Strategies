@@ -19,7 +19,7 @@ except ImportError:
 # 1. MODEL DEFINITION
 # ============================================================
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=14, hidden_dim=64, out_dim=2):
+    def __init__(self, in_dim=15, hidden_dim=64, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim), nn.ReLU(),
@@ -395,7 +395,7 @@ def visualize_inference(points, tris, probs, control_state):
         state["solution_index"] = 0; state["show_clamp"] = True; update_view()
 
     # Layout
-    plt.add_slider(slide_thresh, 0.5, 0.99, value=0.90, pos=[(0.1, 0.05), (0.3, 0.05)], title="Confidence")
+    plt.add_slider(slide_thresh, 0.1, 0.99, value=0.90, pos=[(0.1, 0.05), (0.3, 0.05)], title="Confidence")
     plt.add_slider(slide_offset, 0.0, 100.0, value=10.0, pos=[(0.4, 0.05), (0.6, 0.05)], title="Jaw Open (mm)")
 
     # Base Dimension Sliders (Right Side)
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     model_path = askopenfilename(title="Select Model (.pth)", filetypes=[("Model", "*.pth")])
     if not model_path: exit()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ClampSupportNet(in_dim=14).to(device)
+    model = ClampSupportNet(in_dim=15).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 

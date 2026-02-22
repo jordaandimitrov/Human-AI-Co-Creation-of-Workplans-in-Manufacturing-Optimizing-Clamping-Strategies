@@ -42,7 +42,7 @@ def load_single_part_wrapper(args):
         feats, _, _ = features.extract_triangle_features(path)
 
         # Parse labels
-        y = np.zeros((feats.shape[0], 2), dtype=np.float32)
+        y = np.zeros((feats.shape[0], 2), dtype=np.float32) #mss naar 1 veranderen
         clamp_indices = [int(i) for i, lbl in label_dict.items() if lbl == "clamp"]
         if clamp_indices:
             y[clamp_indices, 0] = 1.0  # Class 0 = Clamp
@@ -69,7 +69,7 @@ class FlatTriangleDataset(Dataset):
             self.X = np.vstack(all_feats)
             self.Y = np.vstack(all_labels)
         else:
-            self.X = np.zeros((0, 14), dtype=np.float32)
+            self.X = np.zeros((0, 15), dtype=np.float32)
             self.Y = np.zeros((0, 2), dtype=np.float32)
 
     def __len__(self):
@@ -88,10 +88,10 @@ class FlatTriangleDataset(Dataset):
 
 
 # ==========================================
-# 3. MODEL (14 Dims)
+# 3. MODEL (15 Dims)
 # ==========================================
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=14, hidden_dim=64, out_dim=2):
+    def __init__(self, in_dim=15, hidden_dim=64, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     PATIENCE = args.patience
 
     labels_path = "training_set/all_part_labels.json"
-    model_save_path = "separation_model_14dim.pth"
+    model_save_path = "separation_model_15dim.pth"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_cores = 8
