@@ -249,9 +249,11 @@ def extract_triangle_features(stl_path):
         # (radial_unit was already calculated earlier in your script)
         triangle_dirs_2d = radial_unit[:, :2]
 
-        # 3. Dot product gives the cosine of the angle to the hole
-        # 1.0 = Facing hole, 0.0 = 90 deg off, -1.0 = Opposite hole
-        relative_angle = np.dot(triangle_dirs_2d, feature_dir_2d)
+        # 3. Get the dot product and convert it to actual Radians!
+        cosine_angle = np.clip(np.dot(triangle_dirs_2d, feature_dir_2d), -1.0, 1.0)
+
+        # arccos converts the cosine back into a linear angle from 0 to Pi (3.14)
+        relative_angle = np.arccos(cosine_angle)
     # ---------------------------------------------------------
 
 
