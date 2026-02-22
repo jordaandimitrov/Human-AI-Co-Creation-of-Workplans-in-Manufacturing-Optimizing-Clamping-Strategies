@@ -35,9 +35,9 @@ class ClampSupportNet(nn.Module):
 # 2. V-BLOCK GENERATION & KINEMATICS
 # ============================================================
 def generate_vblock_actors(mesh, mask, adjacency, face_areas, pull_offset, z_shift, vblock_len, screw_travel,
-                           min_area=10.0):
+                           screw_slide, min_area=10.0):
     """
-    Finds the clamping strips and generates a V-block, a U-bracket, and a movable screw.
+    Finds the clamping strips and generates a V-block, a sliding U-bracket, and a movable screw.
     """
     selected = np.where(mask)[0]
     if len(selected) == 0: return [], []
@@ -121,29 +121,32 @@ def generate_vblock_actors(mesh, mask, adjacency, face_areas, pull_offset, z_shi
     vblock.compute_normals()
     vblock.c("darkgrey").alpha(0.6).linecolor("black")
 
-    # --- 2. BUILD THE U-BRACKET ---
-    bracket_h = notch_w + 50.0  # Height above the V-block
+    # --- 2. BUILD THE SLIDING U-BRACKET ---
+    bracket_h = notch_w + 50.0
     pillar_w = 18.0
     pillar_depth = 30.0
     pillar_h = thickness + bracket_h
     pillar_y_center = (-thickness + bracket_h) / 2.0
 
-    lp = Box(pos=(-width / 2 - pillar_w / 2, pillar_y_center, 0), length=pillar_w, width=pillar_h, height=pillar_depth)
-    rp = Box(pos=(width / 2 + pillar_w / 2, pillar_y_center, 0), length=pillar_w, width=pillar_h, height=pillar_depth)
-    top_bar = Box(pos=(0, bracket_h - pillar_w / 2, 0), length=width + 2 * pillar_w, width=pillar_w,
+    # Apply the screw_slide offset to the local Z coordinates
+    lp = Box(pos=(-width / 2 - pillar_w / 2, pillar_y_center, screw_slide), length=pillar_w, width=pillar_h,
+             height=pillar_depth)
+    rp = Box(pos=(width / 2 + pillar_w / 2, pillar_y_center, screw_slide), length=pillar_w, width=pillar_h,
+             height=pillar_depth)
+    top_bar = Box(pos=(0, bracket_h - pillar_w / 2, screw_slide), length=width + 2 * pillar_w, width=pillar_w,
                   height=pillar_depth)
 
     bracket = merge([lp, rp, top_bar])
-    bracket.c("#444444").alpha(0.8).linecolor("black")  # Heavy industrial iron color
+    bracket.c("#444444").alpha(0.8).linecolor("black")
 
     # --- 3. BUILD THE CLAMP SCREW ---
     screw_len = bracket_h - 10.0
-    # Calculate y-position of the bottom pad based on the slider
     tip_y = bracket_h - pillar_w - screw_travel
 
-    shaft = Cylinder(pos=(0, tip_y + screw_len / 2, 0), r=4, height=screw_len, axis=(0, 1, 0))
-    knob = Cylinder(pos=(0, tip_y + screw_len + 10, 0), r=12, height=20, axis=(0, 1, 0))
-    pad = Cylinder(pos=(0, tip_y, 0), r=10, height=4, axis=(0, 1, 0))
+    # Apply the same screw_slide offset to the screw components
+    shaft = Cylinder(pos=(0, tip_y + screw_len / 2, screw_slide), r=4, height=screw_len, axis=(0, 1, 0))
+    knob = Cylinder(pos=(0, tip_y + screw_len + 10, screw_slide), r=12, height=20, axis=(0, 1, 0))
+    pad = Cylinder(pos=(0, tip_y, screw_slide), r=10, height=4, axis=(0, 1, 0))
 
     screw = merge([shaft, knob, pad])
     screw.c("silver").linecolor("black")
@@ -180,7 +183,8 @@ def visualize_inference(points, tris, probs, control_state):
         "pull_offset": 0.0,
         "z_shift": 0.0,
         "vblock_length": 80.0,
-        "screw_travel": 35.0,  # Default screw depth
+        "screw_travel": 35.0,
+        "screw_slide": 0.0,  # NEW SLIDER STATE
         "clamp_actors": []
     }
 
@@ -190,19 +194,19 @@ def visualize_inference(points, tris, probs, control_state):
     def update_view():
         mask = probs[:, 0] > state["threshold"]
 
-        # Solid Industrial Grey for the part
         cols = np.full((mesh.ncells, 4), [150, 150, 150, 255], dtype=np.uint8)
-        cols[mask] = [255, 0, 0, 255]  # Red highlight for clamp zones
+        cols[mask] = [255, 0, 0, 255]
 
         plt.remove(state["clamp_actors"])
         state["clamp_actors"] = []
         active_indices = []
-        status_msg = f"Offset: {state['pull_offset']:.1f} | Z-Shift: {state['z_shift']:.1f} | Screw Travel: {state['screw_travel']:.1f}mm"
+        status_msg = f"Offset: {state['pull_offset']:.1f} | Z-Shift: {state['z_shift']:.1f} | Screw Drop: {state['screw_travel']:.1f} | Bracket Slide: {state['screw_slide']:.1f}"
 
         if state["show_clamp"]:
             actors, active_indices = generate_vblock_actors(
                 mesh, mask, adjacency, face_areas,
-                state["pull_offset"], state["z_shift"], state["vblock_length"], state["screw_travel"]
+                state["pull_offset"], state["z_shift"], state["vblock_length"], state["screw_travel"],
+                state["screw_slide"]
             )
 
             if len(actors) == 0:
@@ -211,7 +215,6 @@ def visualize_inference(points, tris, probs, control_state):
                 state["clamp_actors"] = actors
                 plt.add(actors)
 
-        # Highlight touching strips in green
         if len(active_indices) > 0:
             cols[active_indices] = [0, 255, 0, 255]
 
@@ -235,6 +238,9 @@ def visualize_inference(points, tris, probs, control_state):
     def slide_screw(w, e):
         state["screw_travel"] = w.GetRepresentation().GetValue(); update_view()
 
+    def slide_bracket(w, e):
+        state["screw_slide"] = w.GetRepresentation().GetValue(); update_view()
+
     # BUTTON CALLBACKS
     def btn_clamp(*args):
         state["show_clamp"] = not state["show_clamp"]; update_view()
@@ -242,15 +248,17 @@ def visualize_inference(points, tris, probs, control_state):
     def btn_load_next(*args):
         control_state["load_next"] = True; plt.close()
 
-    # UI LAYOUT (Arranged into two rows so they don't overlap)
-    # Row 1
+    # UI LAYOUT (Arranged into two rows)
+    # Row 1: Main Block Positioning
     plt.add_slider(slide_thresh, 0.1, 0.99, value=0.80, pos=[(0.05, 0.05), (0.22, 0.05)], title="Confidence")
     plt.add_slider(slide_pull, 0.0, 50.0, value=0.0, pos=[(0.28, 0.05), (0.45, 0.05)], title="Pull Offset")
-    plt.add_slider(slide_z, -100.0, 100.0, value=0.0, pos=[(0.51, 0.05), (0.68, 0.05)], title="Z-Shift")
+    plt.add_slider(slide_z, -100.0, 100.0, value=0.0, pos=[(0.51, 0.05), (0.68, 0.05)], title="Block Z-Shift")
     plt.add_slider(slide_length, 20.0, 200.0, value=80.0, pos=[(0.74, 0.05), (0.95, 0.05)], title="Block Length")
 
-    # Row 2 (The new Screw Slider)
-    plt.add_slider(slide_screw, 0.0, 100.0, value=35.0, pos=[(0.05, 0.12), (0.22, 0.12)], title="Screw Travel (mm)")
+    # Row 2: U-Bracket Kinematics
+    plt.add_slider(slide_screw, 0.0, 100.0, value=35.0, pos=[(0.05, 0.12), (0.22, 0.12)], title="Screw Down/Up (mm)")
+    plt.add_slider(slide_bracket, -100.0, 100.0, value=0.0, pos=[(0.28, 0.12), (0.45, 0.12)],
+                   title="Bracket Slide (mm)")
 
     plt.add_button(btn_clamp, states=[" Show V-Block ", " Hide V-Block "], c=["w", "w"], bc=["b", "grey"],
                    pos=(0.8, 0.15), size=20)
