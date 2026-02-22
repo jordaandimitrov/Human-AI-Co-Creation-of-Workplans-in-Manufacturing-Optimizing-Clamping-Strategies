@@ -3,66 +3,6 @@ import trimesh
 from vedo import Mesh
 
 
-def aaaacompute_cylindricity(centroids, normals, outerness_map, radius=None, outerness_thresh=0.85):
-    """
-    Compute a strict Z-axis cylinder score per triangle.
-    Triangles must:
-      1. Be outer faces (outerness >= threshold)
-      2. Have normals roughly pointing radially outward
-      3. Be mostly vertical (normals not along Z)
-      4. Be close to expected radius (optional)
-
-    Parameters:
-        centroids       : (N,3) array of triangle centroids
-        normals         : (N,3) array of triangle normals
-        outerness_map   : (N,) array of outerness per triangle
-        radius          : optional expected cylinder radius
-        outerness_thresh: minimum outerness to consider a triangle
-
-    Returns:
-        cylindricity : (N,) array in [0,1], 1 = perfect cylinder side
-    """
-    N = len(centroids)
-    cylindricity = np.zeros(N, dtype=np.float32)
-
-    # Step 1: Outerness filter
-    eligible = outerness_map >= outerness_thresh
-    if not np.any(eligible):
-        return cylindricity  # nothing to score
-
-    # Step 2: Radial vectors from Z-axis
-    xy = centroids[:, :2]
-    center_xy = xy.mean(axis=0)
-    radial_vec = xy - center_xy
-    radial_len = np.linalg.norm(radial_vec, axis=1) + 1e-6
-    radial_unit = radial_vec / radial_len[:, None]
-
-    # Step 3: Normals XY projection and verticality
-    normals_xy = normals[:, :2]
-    norm_len = np.linalg.norm(normals_xy, axis=1) + 1e-6
-    normals_xy_unit = normals_xy / norm_len[:, None]
-
-    verticality = 1.0 - np.abs(normals[:, 2])  # 1 = mostly vertical, 0 = along Z
-
-    # Step 4: Radial alignment (cosine between normal XY and radial vector)
-    radial_alignment = np.einsum("ij,ij->i", normals_xy_unit, radial_unit)
-    radial_alignment = np.clip(radial_alignment, 0, 1)
-
-    # Step 5: Optional radius check
-    if radius is not None:
-        radial_error = np.abs(radial_len - radius) / (radius + 1e-6)
-        radius_score = np.exp(-5 * radial_error)
-    else:
-        radius_score = np.ones(N, dtype=np.float32)
-
-    # Step 6: Combine scores for eligible triangles
-    score = radial_alignment * verticality * radius_score
-    score[~eligible] = 0.0  # zero-out ineligible triangles
-
-    # Step 7: Clip final score
-    cylindricity = np.clip(score, 0, 1).astype(np.float32)
-
-    return cylindricity
 
 def compute_cylindricity(centroids, normals, outerness_map, radius=None, outerness_thresh=0.85, max_cv=0.15):
     """
