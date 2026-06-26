@@ -108,6 +108,7 @@ if __name__ == "__main__":
         # Center & Rotate
         cm = mesh.center_of_mass()
         mesh.shift(-cm)
+
         rotation_angle = random.uniform(0, 360)
         mesh.rotate_z(rotation_angle)
         mesh.compute_normals()
