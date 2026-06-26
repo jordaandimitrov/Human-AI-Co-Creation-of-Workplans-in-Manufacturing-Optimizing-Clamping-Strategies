@@ -19,13 +19,14 @@ except ImportError:
 # 1. MODEL DEFINITION
 # ============================================================
 class ClampSupportNet(nn.Module):
-    # Ensure in_dim matches exactly what your model was trained with (15 or 16)
-    def __init__(self, in_dim=15, hidden_dim=64, out_dim=2):
+    def __init__(self, in_dim=15, hidden_dim=128, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(in_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, X): return self.net(X)

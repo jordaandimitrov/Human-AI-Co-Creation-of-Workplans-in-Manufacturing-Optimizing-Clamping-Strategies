@@ -19,7 +19,7 @@ except ImportError:
 # 1. MODEL DEFINITION
 # ============================================================
 class ClampSupportNet(nn.Module):
-    def __init__(self, in_dim=15, hidden_dim=64, out_dim=2):
+    def __init__(self, in_dim=13, hidden_dim=64, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim), nn.ReLU(),
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     model_path = askopenfilename(title="Select Model (.pth)", filetypes=[("Model", "*.pth")])
     if not model_path: exit()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ClampSupportNet(in_dim=15).to(device)
+    model = ClampSupportNet(in_dim=13).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
